@@ -10,3 +10,5 @@ __pycache__/
 .idea/
 oh_modules/
 apps/pura70/entry/src/main/resources/rawfile/models/
+.hvigor/
+apps/pura70/build-profile.json5
