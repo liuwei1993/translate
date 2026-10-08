@@ -9,3 +9,4 @@ __pycache__/
 *.hap
 .idea/
 oh_modules/
+apps/pura70/entry/src/main/resources/rawfile/models/
