@@ -10,20 +10,37 @@ import { MarianTranslator } from '../mt/MarianTranslator';
 export class CaptionUpdate {
   source: string = '';
   translation: string = '';
+  direction: string = '';
   final: boolean = false;
+}
+
+function scriptName(text: string): string {
+  let han = 0;
+  let latin = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 0x4E00 && code <= 0x9FFF) {
+      han++;
+    } else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
+      latin++;
+    }
+  }
+  if (han === 0 && latin === 0) {
+    return '';
+  }
+  return han >= latin ? 'zh-en' : 'en-zh';
 }
 
 export class CaptionEngine {
   private recognizer: OnlineRecognizer;
   private stream: OnlineStream;
-  private translator?: MarianTranslator;
-  private root: string = '';
-  private direction: string;
+  private zhEn?: MarianTranslator;
+  private enZh?: MarianTranslator;
   private lastSource: string = '';
   private lastAt: number = -1000000;
   private translateError: string = '';
 
-  constructor(resourceManager: object, direction: string) {
+  constructor(resourceManager: object) {
     const config = new OnlineRecognizerConfig();
     const model = new OnlineModelConfig();
     const transducer = new OnlineTransducerModelConfig();
@@ -42,7 +59,6 @@ export class CaptionEngine {
     config.rule3MinUtteranceLength = 20;
     this.recognizer = new OnlineRecognizer(config, resourceManager);
     this.stream = this.recognizer.createStream();
-    this.direction = direction;
   }
 
   problem(): string {
@@ -50,29 +66,20 @@ export class CaptionEngine {
   }
 
   attachTranslator(root: string): void {
-    this.root = root;
-    this.closeTranslator();
-    this.loadTranslator();
-  }
-
-  setDirection(direction: string): void {
-    if (this.direction === direction) {
-      return;
-    }
-    this.direction = direction;
-    this.lastSource = '';
-    this.lastAt = -1000000;
-    this.recognizer.reset(this.stream);
-    if (this.root.length === 0) {
-      return;
-    }
-    this.closeTranslator();
+    MarianTranslator.closeAll();
+    this.zhEn = undefined;
+    this.enZh = undefined;
     try {
-      this.loadTranslator();
+      const zhEn = new MarianTranslator('zh-en', `${root}/models/mt/zh-en`, `${root}/tok/zh-en.json`);
+      const enZh = new MarianTranslator('en-zh', `${root}/models/mt/en-zh`, `${root}/tok/en-zh.json`);
+      this.zhEn = zhEn;
+      this.enZh = enZh;
       this.translateError = '';
     } catch (err) {
-      const error = err as Error;
-      this.translateError = error.message;
+      MarianTranslator.closeAll();
+      this.zhEn = undefined;
+      this.enZh = undefined;
+      throw err as Error;
     }
   }
 
@@ -95,13 +102,22 @@ export class CaptionEngine {
     const update = new CaptionUpdate();
     update.source = text;
     update.final = final;
-    if (final && this.translator !== undefined) {
-      try {
-        update.translation = this.translator.translate(text);
-        this.translateError = '';
-      } catch (err) {
-        const error = err as Error;
-        this.translateError = error.message;
+    if (final) {
+      const name = scriptName(text);
+      const translator = name === 'zh-en' ? this.zhEn : name === 'en-zh' ? this.enZh : undefined;
+      if (name === 'zh-en') {
+        update.direction = '中文 → 英文';
+      } else if (name === 'en-zh') {
+        update.direction = '英文 → 中文';
+      }
+      if (translator !== undefined) {
+        try {
+          update.translation = translator.translate(text);
+          this.translateError = '';
+        } catch (err) {
+          const error = err as Error;
+          this.translateError = error.message;
+        }
       }
     }
     this.lastSource = text;
@@ -112,18 +128,5 @@ export class CaptionEngine {
       this.lastAt = -1000000;
     }
     return update;
-  }
-
-  private loadTranslator(): void {
-    const name = this.direction === 'en2zh' ? 'en-zh' : 'zh-en';
-    this.translator = new MarianTranslator(`${this.root}/models/mt/${name}`, `${this.root}/tok/${name}.json`);
-    this.translateError = '';
-  }
-
-  private closeTranslator(): void {
-    if (this.translator !== undefined) {
-      this.translator.close();
-      this.translator = undefined;
-    }
   }
 }

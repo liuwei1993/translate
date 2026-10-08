@@ -4,12 +4,17 @@
 
 namespace {
 
+struct Pair {
+    OrtSession* encoder = nullptr;
+    OrtSession* decoder = nullptr;
+};
+
 struct State {
     const OrtApi* api = nullptr;
     OrtEnv* env = nullptr;
     OrtMemoryInfo* memory = nullptr;
-    OrtSession* encoder = nullptr;
-    OrtSession* decoder = nullptr;
+    Pair zh_en;
+    Pair en_zh;
 };
 
 State g_state;
@@ -48,18 +53,31 @@ bool failed(const OrtApi* api, OrtStatus* status, std::string* error) {
     return true;
 }
 
-void release_sessions() {
-    if (g_state.api == nullptr) {
+void release_pair(Pair* pair) {
+    if (g_state.api == nullptr || pair == nullptr) {
         return;
     }
-    if (g_state.encoder != nullptr) {
-        g_state.api->ReleaseSession(g_state.encoder);
-        g_state.encoder = nullptr;
+    if (pair->encoder != nullptr) {
+        g_state.api->ReleaseSession(pair->encoder);
+        pair->encoder = nullptr;
     }
-    if (g_state.decoder != nullptr) {
-        g_state.api->ReleaseSession(g_state.decoder);
-        g_state.decoder = nullptr;
+    if (pair->decoder != nullptr) {
+        g_state.api->ReleaseSession(pair->decoder);
+        pair->decoder = nullptr;
     }
+}
+
+Pair* find_pair(const std::string& name, std::string* error) {
+    if (name == "zh-en") {
+        return &g_state.zh_en;
+    }
+    if (name == "en-zh") {
+        return &g_state.en_zh;
+    }
+    if (error != nullptr) {
+        *error = "unknown translation direction";
+    }
+    return nullptr;
 }
 
 bool make_tensor(const int64_t* data, size_t count, const int64_t* shape, size_t rank, ONNXTensorElementDataType type,
@@ -110,7 +128,8 @@ int64_t argmax_row(const float* data, int64_t row, int64_t width) {
 
 }  // namespace
 
-bool mt_open(const std::string& encoder_path, const std::string& decoder_path, std::string* error) {
+bool mt_open(const std::string& name, const std::string& encoder_path, const std::string& decoder_path,
+    std::string* error) {
     if (g_state.api == nullptr) {
         const OrtApiBase* base = OrtGetApiBase();
         g_state.api = base->GetApi(ORT_API_VERSION);
@@ -121,7 +140,11 @@ bool mt_open(const std::string& encoder_path, const std::string& decoder_path, s
             return false;
         }
     }
-    release_sessions();
+    Pair* pair = find_pair(name, error);
+    if (pair == nullptr) {
+        return false;
+    }
+    release_pair(pair);
     if (g_state.env == nullptr) {
         if (failed(g_state.api, g_state.api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "marian", &g_state.env), error)) {
             return false;
@@ -143,25 +166,30 @@ bool mt_open(const std::string& encoder_path, const std::string& decoder_path, s
         return false;
     }
     bool opened = !failed(g_state.api,
-                       g_state.api->CreateSession(g_state.env, encoder_path.c_str(), options, &g_state.encoder), error) &&
+                       g_state.api->CreateSession(g_state.env, encoder_path.c_str(), options, &pair->encoder), error) &&
                    !failed(g_state.api,
-                       g_state.api->CreateSession(g_state.env, decoder_path.c_str(), options, &g_state.decoder), error);
+                       g_state.api->CreateSession(g_state.env, decoder_path.c_str(), options, &pair->decoder), error);
     g_state.api->ReleaseSessionOptions(options);
     if (!opened) {
-        release_sessions();
+        release_pair(pair);
         return false;
     }
     return true;
 }
 
 void mt_close() {
-    release_sessions();
+    release_pair(&g_state.zh_en);
+    release_pair(&g_state.en_zh);
 }
 
-bool mt_translate(const std::vector<int64_t>& input_ids, int64_t pad_id, int64_t eos_id, std::vector<int64_t>* output,
-    std::string* error) {
+bool mt_translate(const std::string& name, const std::vector<int64_t>& input_ids, int64_t pad_id, int64_t eos_id,
+    std::vector<int64_t>* output, std::string* error) {
     output->clear();
-    if (g_state.encoder == nullptr || g_state.decoder == nullptr) {
+    Pair* pair = find_pair(name, error);
+    if (pair == nullptr) {
+        return false;
+    }
+    if (pair->encoder == nullptr || pair->decoder == nullptr) {
         if (error != nullptr) {
             *error = "translation model is not open";
         }
@@ -189,7 +217,7 @@ bool mt_translate(const std::vector<int64_t>& input_ids, int64_t pad_id, int64_t
     Value encoded;
     encoded.api = g_state.api;
     if (failed(g_state.api,
-            g_state.api->Run(g_state.encoder, nullptr, encoder_names, encoder_inputs, 2, encoder_outputs_name, 1,
+            g_state.api->Run(pair->encoder, nullptr, encoder_names, encoder_inputs, 2, encoder_outputs_name, 1,
                 &encoded.value),
             error)) {
         return false;
@@ -198,6 +226,12 @@ bool mt_translate(const std::vector<int64_t>& input_ids, int64_t pad_id, int64_t
     if (!tensor_dims(encoded.value, &hidden_dims, error) || hidden_dims.size() != 3) {
         if (error != nullptr && error->empty()) {
             *error = "encoder output rank is not 3";
+        }
+        return false;
+    }
+    if (hidden_dims[0] <= 0 || hidden_dims[1] <= 0 || hidden_dims[2] <= 0) {
+        if (error != nullptr) {
+            *error = "encoder output is empty";
         }
         return false;
     }
@@ -239,7 +273,7 @@ bool mt_translate(const std::vector<int64_t>& input_ids, int64_t pad_id, int64_t
             Value logits;
             logits.api = g_state.api;
             if (failed(g_state.api,
-                    g_state.api->Run(g_state.decoder, nullptr, decoder_names, decoder_inputs, 3, decoder_output_name, 1,
+                    g_state.api->Run(pair->decoder, nullptr, decoder_names, decoder_inputs, 3, decoder_output_name, 1,
                         &logits.value),
                     error)) {
                 return false;

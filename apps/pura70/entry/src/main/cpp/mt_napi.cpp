@@ -51,42 +51,49 @@ void throw_message(napi_env env, const std::string& message) {
 }
 
 napi_value OpenModels(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr, nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr, nullptr, nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 2) {
-        throw_message(env, "openModels needs encoder and decoder paths");
+    if (argc < 3) {
+        throw_message(env, "openModels needs a direction and two model paths");
         return nullptr;
     }
+    std::string name;
     std::string encoder;
     std::string decoder;
-    if (!read_string(env, args[0], &encoder) || !read_string(env, args[1], &decoder)) {
+    if (!read_string(env, args[0], &name) || !read_string(env, args[1], &encoder) ||
+        !read_string(env, args[2], &decoder)) {
         throw_message(env, "model path is not a string");
         return nullptr;
     }
     std::string error;
-    if (!mt_open(encoder, decoder, &error)) {
+    if (!mt_open(name, encoder, decoder, &error)) {
         throw_message(env, error);
     }
     return nullptr;
 }
 
 napi_value TranslateIds(napi_env env, napi_callback_info info) {
-    size_t argc = 3;
-    napi_value args[3] = {nullptr, nullptr, nullptr};
+    size_t argc = 4;
+    napi_value args[4] = {nullptr, nullptr, nullptr, nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc < 3) {
-        throw_message(env, "translateIds needs ids, padId, eosId");
+    if (argc < 4) {
+        throw_message(env, "translateIds needs a direction, ids, padId, eosId");
+        return nullptr;
+    }
+    std::string name;
+    if (!read_string(env, args[0], &name)) {
+        throw_message(env, "translation direction is not a string");
         return nullptr;
     }
     std::vector<int64_t> ids;
-    if (!read_ids(env, args[0], &ids)) {
+    if (!read_ids(env, args[1], &ids)) {
         throw_message(env, "token ids are not an array");
         return nullptr;
     }
     std::vector<int64_t> translated;
     std::string error;
-    if (!mt_translate(ids, read_int(env, args[1]), read_int(env, args[2]), &translated, &error)) {
+    if (!mt_translate(name, ids, read_int(env, args[2]), read_int(env, args[3]), &translated, &error)) {
         throw_message(env, error);
         return nullptr;
     }

@@ -8,12 +8,13 @@ import { stageModels } from '../engine/ModelStore';
 interface FrozenLine {
   source: string;
   translation: string;
+  direction: string;
 }
 
 @Entry
 @Component
 struct Index {
-  @State directionZhToEn: boolean = true;
+  @State directionText: string = '自动互译';
   @State listening: boolean = false;
   @State status: string = '准备听';
   @State liveSource: string = '';
@@ -24,14 +25,6 @@ struct Index {
   private translationReady: boolean = false;
   private capturer?: audio.AudioCapturer;
   private engine?: CaptionEngine;
-
-  private directionLabel(): string {
-    return this.directionZhToEn ? '中文 → 英文' : '英文 → 中文';
-  }
-
-  private directionValue(): string {
-    return this.directionZhToEn ? 'zh2en' : 'en2zh';
-  }
 
   private async requestMic(): Promise<boolean> {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -47,13 +40,13 @@ struct Index {
     }
   }
 
-  private showUpdate(source: string, translation: string, final: boolean): void {
+  private showUpdate(source: string, translation: string, direction: string, final: boolean): void {
     if (final) {
       const next: FrozenLine[] = [];
       for (let i = 0; i < this.lines.length; i++) {
         next.push(this.lines[i]);
       }
-      next.push({ source: source, translation: translation });
+      next.push({ source: source, translation: translation, direction: direction });
       while (next.length > 8) {
         next.shift();
       }
@@ -67,7 +60,7 @@ struct Index {
   }
 
   private async ensureEngine(): Promise<void> {
-    if (this.engine !== undefined) {
+    if (this.engine !== undefined && this.translationReady) {
       return;
     }
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -76,7 +69,9 @@ struct Index {
       setTimeout(resolve, 50);
     });
     const root = stageModels(context);
-    this.engine = new CaptionEngine(context.resourceManager, this.directionValue());
+    if (this.engine === undefined) {
+      this.engine = new CaptionEngine(context.resourceManager);
+    }
     try {
       this.engine.attachTranslator(root);
       this.translationReady = true;
@@ -108,10 +103,15 @@ struct Index {
     try {
       const update = this.engine.accept(samples, Date.now());
       if (update !== undefined) {
-        this.showUpdate(update.source, update.translation, update.final);
+        this.showUpdate(update.source, update.translation, update.direction, update.final);
+        if (update.direction.length > 0) {
+          this.directionText = update.direction;
+        }
         if (update.final && this.engine.problem().length > 0) {
           hilog.error(0x0001, 'subtitle', 'translate failed: %{public}s', this.engine.problem());
           this.status = '翻译失败';
+        } else if (update.final && update.translation.length > 0 && this.listening) {
+          this.status = '正在听';
         }
       }
     } catch (err) {
@@ -191,22 +191,9 @@ struct Index {
   build() {
     Column() {
       Row() {
-        Button(this.directionLabel())
-          .onClick(() => {
-            this.directionZhToEn = !this.directionZhToEn;
-            this.liveSource = '';
-            this.liveTranslation = '';
-            if (this.engine !== undefined) {
-              this.engine.setDirection(this.directionValue());
-              this.translationReady = this.engine.problem().length === 0;
-              if (!this.translationReady) {
-                hilog.error(0x0001, 'subtitle', 'switch mt failed: %{public}s', this.engine.problem());
-                this.status = '翻译模型没有打开';
-              } else if (this.listening) {
-                this.status = '正在听';
-              }
-            }
-          })
+        Text(this.directionText)
+          .fontSize(16)
+          .fontColor('#FFFFFF')
         Blank()
         Text(this.status)
           .fontSize(14)
@@ -219,6 +206,12 @@ struct Index {
         ForEach(this.lines, (line: FrozenLine, index: number) => {
           ListItem() {
             Column() {
+              if (line.direction.length > 0) {
+                Text(line.direction)
+                  .fontSize(12)
+                  .fontColor('#888888')
+                  .width('100%')
+              }
               Text(line.translation.length > 0 ? line.source : '')
                 .fontSize(16)
                 .fontColor('#CCCCCC')
