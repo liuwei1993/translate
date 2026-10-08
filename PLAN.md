@@ -12,17 +12,17 @@
 
 ## 文件
 
-- Create: `engine/pyproject.toml`
-- Create: `engine/offline_caption/__init__.py`
-- Create: `engine/offline_caption/types.py`
-- Create: `engine/offline_caption/asr.py`
-- Create: `engine/offline_caption/translate.py`
-- Create: `engine/offline_caption/session.py`
-- Create: `engine/offline_caption/wav.py`
-- Create: `engine/offline_caption/cli.py`
-- Create: `engine/tests/test_session.py`
-- Create: `engine/tests/test_sherpa_asr.py`
-- Create: `engine/tests/test_marian.py`
+- Create: `offline/pyproject.toml`
+- Create: `offline/offline_caption/__init__.py`
+- Create: `offline/offline_caption/types.py`
+- Create: `offline/offline_caption/asr.py`
+- Create: `offline/offline_caption/translate.py`
+- Create: `offline/offline_caption/session.py`
+- Create: `offline/offline_caption/wav.py`
+- Create: `offline/offline_caption/cli.py`
+- Create: `offline/tests/test_session.py`
+- Create: `offline/tests/test_sherpa_asr.py`
+- Create: `offline/tests/test_marian.py`
 - Create: `scripts/download_models.sh`
 - Modify: `.gitignore`（已有，执行时确认仍忽略 `models/`）
 
@@ -31,18 +31,18 @@
 ### Task 1: 会话类型和假实现
 
 **Files:**
-- Create: `engine/pyproject.toml`
-- Create: `engine/offline_caption/__init__.py`
-- Create: `engine/offline_caption/types.py`
-- Create: `engine/offline_caption/asr.py`
-- Create: `engine/offline_caption/translate.py`
-- Create: `engine/offline_caption/session.py`
-- Test: `engine/tests/test_session.py`
+- Create: `offline/pyproject.toml`
+- Create: `offline/offline_caption/__init__.py`
+- Create: `offline/offline_caption/types.py`
+- Create: `offline/offline_caption/asr.py`
+- Create: `offline/offline_caption/translate.py`
+- Create: `offline/offline_caption/session.py`
+- Test: `offline/tests/test_session.py`
 
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# engine/tests/test_session.py
+# offline/tests/test_session.py
 from offline_caption.asr import AsrEvent, ScriptedAsr
 from offline_caption.session import CaptionSession
 from offline_caption.translate import PrefixTranslator
@@ -119,14 +119,14 @@ def test_empty_asr_event_emits_nothing():
 
 - [ ] **Step 2: 跑测试，确认失败**
 
-Run: `cd /home/simon/codes/translate && python -m pytest engine/tests/test_session.py -v`
+Run: `cd /home/simon/codes/translate && python -m pytest offline/tests/test_session.py -v`
 
 Expected: FAIL，`offline_caption` 无法导入。
 
 - [ ] **Step 3: 写最小实现**
 
 ```toml
-# engine/pyproject.toml
+# offline/pyproject.toml
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -151,15 +151,15 @@ testpaths = ["tests"]
 pythonpath = ["."]
 ```
 
-pytest 的根目录是 `engine/`，所以后面的命令都在 `engine` 下跑。
+pytest 的根目录是 `offline/`，所以后面的命令都在 `offline` 下跑。
 
 ```python
-# engine/offline_caption/__init__.py
+# offline/offline_caption/__init__.py
 """Offline bilingual caption pipeline."""
 ```
 
 ```python
-# engine/offline_caption/types.py
+# offline/offline_caption/types.py
 from enum import Enum
 
 
@@ -169,7 +169,7 @@ class Direction(Enum):
 ```
 
 ```python
-# engine/offline_caption/asr.py
+# offline/offline_caption/asr.py
 from dataclasses import dataclass
 
 
@@ -194,7 +194,7 @@ class ScriptedAsr:
 ```
 
 ```python
-# engine/offline_caption/translate.py
+# offline/offline_caption/translate.py
 class PrefixTranslator:
     def __init__(self, prefix: str):
         self.prefix = prefix
@@ -204,7 +204,7 @@ class PrefixTranslator:
 ```
 
 ```python
-# engine/offline_caption/session.py
+# offline/offline_caption/session.py
 from offline_caption.types import Direction
 
 
@@ -244,7 +244,7 @@ class CaptionSession:
 
 - [ ] **Step 4: 安装 pytest 并确认通过**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pip install -e ".[dev]" && python -m pytest tests/test_session.py -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pip install -e ".[dev]" && python -m pytest tests/test_session.py -v`
 
 Expected: 4 passed.
 
@@ -253,7 +253,7 @@ Expected: 4 passed.
 ```bash
 cd /home/simon/codes/translate
 git init
-git add .gitignore OUTLINE.md PLAN.md engine
+git add .gitignore OUTLINE.md PLAN.md offline
 git commit -m "$(cat <<'EOF'
 Add the offline caption session and its update rules.
 
@@ -264,12 +264,12 @@ EOF
 ### Task 2: 句内防抖
 
 **Files:**
-- Modify: `engine/tests/test_session.py`
-- Modify: `engine/offline_caption/session.py`
+- Modify: `offline/tests/test_session.py`
+- Modify: `offline/offline_caption/session.py`
 
 - [ ] **Step 1: 追加失败测试**
 
-在 `engine/tests/test_session.py` 末尾追加：
+在 `offline/tests/test_session.py` 末尾追加：
 
 ```python
 def test_partial_updates_inside_the_interval_are_dropped():
@@ -316,13 +316,13 @@ def test_final_is_emitted_even_inside_the_interval():
 
 - [ ] **Step 2: 跑测试，确认新测试失败**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pytest tests/test_session.py::test_partial_updates_inside_the_interval_are_dropped -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pytest tests/test_session.py::test_partial_updates_inside_the_interval_are_dropped -v`
 
 Expected: FAIL，`CaptionSession.__init__` 不接受 `min_interval_s`。
 
 - [ ] **Step 3: 加上 300 ms 间隔**
 
-把 `engine/offline_caption/session.py` 换成：
+把 `offline/offline_caption/session.py` 换成：
 
 ```python
 from offline_caption.types import Direction
@@ -370,7 +370,7 @@ class CaptionSession:
 
 - [ ] **Step 4: 跑全部会话测试**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pytest tests/test_session.py -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pytest tests/test_session.py -v`
 
 Expected: 6 passed。
 
@@ -378,7 +378,7 @@ Expected: 6 passed。
 
 ```bash
 cd /home/simon/codes/translate
-git add engine/tests/test_session.py engine/offline_caption/session.py
+git add offline/tests/test_session.py offline/offline_caption/session.py
 git commit -m "$(cat <<'EOF'
 Keep partial caption updates from firing on every audio frame.
 
@@ -389,15 +389,15 @@ EOF
 ### Task 3: 流式识别适配
 
 **Files:**
-- Create: `engine/offline_caption/wav.py`
-- Modify: `engine/offline_caption/asr.py`
-- Create: `engine/tests/test_sherpa_asr.py`
+- Create: `offline/offline_caption/wav.py`
+- Modify: `offline/offline_caption/asr.py`
+- Create: `offline/tests/test_sherpa_asr.py`
 - Create: `scripts/download_models.sh`
 
 - [ ] **Step 1: 写 wav 读取测试和识别适配测试**
 
 ```python
-# engine/tests/test_sherpa_asr.py
+# offline/tests/test_sherpa_asr.py
 import wave
 from pathlib import Path
 
@@ -453,14 +453,14 @@ def test_sherpa_emits_text_and_a_final_after_silence():
 
 - [ ] **Step 2: 跑测试，确认 wav 测试失败**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pytest tests/test_sherpa_asr.py::test_read_wave_normalizes_int16 -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pytest tests/test_sherpa_asr.py::test_read_wave_normalizes_int16 -v`
 
 Expected: FAIL，`offline_caption.wav` 无法导入。带模型的测试在模型下载前会被 skip。
 
 - [ ] **Step 3: 实现 wav 读取和 sherpa 适配**
 
 ```python
-# engine/offline_caption/wav.py
+# offline/offline_caption/wav.py
 import wave
 
 import numpy as np
@@ -478,7 +478,7 @@ def read_wave(path: str):
     return samples, sample_rate
 ```
 
-在 `engine/offline_caption/asr.py` 末尾追加：
+在 `offline/offline_caption/asr.py` 末尾追加：
 
 ```python
 class SherpaStreamingAsr:
@@ -546,7 +546,7 @@ test -f "$ASR_DIR/tokens.txt"
 
 - [ ] **Step 4: 跑不依赖模型的测试**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pip install -e ".[dev,asr]" && python -m pytest tests/test_sherpa_asr.py::test_read_wave_normalizes_int16 tests/test_session.py -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pip install -e ".[dev,asr]" && python -m pytest tests/test_sherpa_asr.py::test_read_wave_normalizes_int16 tests/test_session.py -v`
 
 Expected: PASS。`test_sherpa_emits_text_and_a_final_after_silence` 在执行下载脚本之前 skip。
 
@@ -555,7 +555,7 @@ Expected: PASS。`test_sherpa_emits_text_and_a_final_after_silence` 在执行下
 ```bash
 chmod +x /home/simon/codes/translate/scripts/download_models.sh
 /home/simon/codes/translate/scripts/download_models.sh
-cd /home/simon/codes/translate/engine && python -m pytest tests/test_sherpa_asr.py -v
+cd /home/simon/codes/translate/offline && python -m pytest tests/test_sherpa_asr.py -v
 ```
 
 Expected: 2 passed。压缩包大约 488 MB，解压后的 int8 编码器是 174 MB。
@@ -565,7 +565,7 @@ Expected: 2 passed。压缩包大约 488 MB，解压后的 int8 编码器是 174
 ```bash
 cd /home/simon/codes/translate
 git check-ignore -v models/asr/tokens.txt
-git add engine/offline_caption/asr.py engine/offline_caption/wav.py engine/tests/test_sherpa_asr.py scripts/download_models.sh
+git add offline/offline_caption/asr.py offline/offline_caption/wav.py offline/tests/test_sherpa_asr.py scripts/download_models.sh
 git commit -m "$(cat <<'EOF'
 Decode mic-rate audio with the bilingual streaming recognizer.
 
@@ -578,14 +578,14 @@ Expected: `git check-ignore` 打印 `.gitignore:2:models/ models/asr/tokens.txt`
 ### Task 4: Opus-MT 翻译器
 
 **Files:**
-- Modify: `engine/offline_caption/translate.py`
-- Create: `engine/tests/test_marian.py`
+- Modify: `offline/offline_caption/translate.py`
+- Create: `offline/tests/test_marian.py`
 - Modify: `scripts/download_models.sh`
 
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# engine/tests/test_marian.py
+# offline/tests/test_marian.py
 from pathlib import Path
 
 import pytest
@@ -618,13 +618,13 @@ def test_marian_translates_a_short_english_sentence():
 
 - [ ] **Step 2: 跑测试，确认在模型缺失时 skip，在类缺失时失败**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pytest tests/test_marian.py -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pytest tests/test_marian.py -v`
 
 Expected: 收集测试时 FAIL，因为 `MarianOnnxTranslator` 还不存在。先把类的空壳放上再测 skip 不符合本步。本步预期是 ImportError 或 AttributeError。
 
 - [ ] **Step 3: 实现翻译器并扩展下载脚本**
 
-在 `engine/offline_caption/translate.py` 末尾追加：
+在 `offline/offline_caption/translate.py` 末尾追加：
 
 ```python
 class MarianOnnxTranslator:
@@ -665,7 +665,7 @@ export_mt Helsinki-NLP/opus-mt-en-zh "$ROOT/models/mt/en-zh"
 
 ```bash
 /home/simon/codes/translate/scripts/download_models.sh
-cd /home/simon/codes/translate/engine && python -m pip install -e ".[dev,mt]" && python -m pytest tests/test_marian.py -v
+cd /home/simon/codes/translate/offline && python -m pip install -e ".[dev,mt]" && python -m pytest tests/test_marian.py -v
 ```
 
 Expected: 2 passed。中文「这个多少钱」的译文里能看到 how much、price 或 cost。英文 “How much is this?” 的译文里能看到「多少」或「钱」。optimum 导出后目录里应有 `encoder_model.onnx`。
@@ -674,7 +674,7 @@ Expected: 2 passed。中文「这个多少钱」的译文里能看到 how much�
 
 ```bash
 cd /home/simon/codes/translate
-git add engine/offline_caption/translate.py engine/tests/test_marian.py scripts/download_models.sh
+git add offline/offline_caption/translate.py offline/tests/test_marian.py scripts/download_models.sh
 git commit -m "$(cat <<'EOF'
 Translate committed source text with on-disk Opus-MT models.
 
@@ -685,13 +685,13 @@ EOF
 ### Task 5: 命令行
 
 **Files:**
-- Create: `engine/offline_caption/cli.py`
-- Create: `engine/tests/test_cli.py`
+- Create: `offline/offline_caption/cli.py`
+- Create: `offline/tests/test_cli.py`
 
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# engine/tests/test_cli.py
+# offline/tests/test_cli.py
 import json
 
 from offline_caption.cli import format_caption
@@ -708,14 +708,14 @@ def test_format_caption_is_one_json_object():
 
 - [ ] **Step 2: 跑测试，确认失败**
 
-Run: `cd /home/simon/codes/translate/engine && python -m pytest tests/test_cli.py -v`
+Run: `cd /home/simon/codes/translate/offline && python -m pytest tests/test_cli.py -v`
 
 Expected: FAIL，`offline_caption.cli` 无法导入。
 
 - [ ] **Step 3: 实现命令行**
 
 ```python
-# engine/offline_caption/cli.py
+# offline/offline_caption/cli.py
 import argparse
 import json
 from pathlib import Path
@@ -780,7 +780,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: 跑测试，并对示例 wav 打出字幕**
 
 ```bash
-cd /home/simon/codes/translate/engine && python -m pytest tests/test_cli.py tests/test_session.py -v
+cd /home/simon/codes/translate/offline && python -m pytest tests/test_cli.py tests/test_session.py -v
 python -m offline_caption.cli --wav /home/simon/codes/translate/models/asr/test_wavs/1.wav --direction zh2en
 ```
 
@@ -790,7 +790,7 @@ Expected: pytest PASS。命令在断网时仍打印若干行 JSON，其中至少
 
 ```bash
 cd /home/simon/codes/translate
-git add engine/offline_caption/cli.py engine/tests/test_cli.py
+git add offline/offline_caption/cli.py offline/tests/test_cli.py
 git commit -m "$(cat <<'EOF'
 Print streaming captions for a wav file without using the network.
 
@@ -800,4 +800,4 @@ EOF
 
 ## 本计划不包含的下一步
 
-鸿蒙工程 `apps/pura70` 等这条命令对 `models/asr/test_wavs/1.wav` 打出带 `final: true` 的英文译文后再写。壳的行为以 `engine/tests/test_session.py` 为准：300 ms 内的句内增量丢掉，句末冻结，切换方向后使用另一个翻译器。
+鸿蒙工程 `apps/pura70` 等这条命令对 `models/asr/test_wavs/1.wav` 打出带 `final: true` 的英文译文后再写。壳的行为以 `offline/tests/test_session.py` 为准：300 ms 内的句内增量丢掉，句末冻结，切换方向后使用另一个翻译器。

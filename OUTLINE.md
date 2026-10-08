@@ -47,7 +47,7 @@
 ```
 OUTLINE.md          本文件
 PLAN.md             桌面流水线的实现计划
-engine/             执行 PLAN.md 之后出现
+offline/            执行 PLAN.md 之后出现
   offline_caption/  会话、识别适配、翻译适配、命令行
   tests/
 scripts/download_models.sh
