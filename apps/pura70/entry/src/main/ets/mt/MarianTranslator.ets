@@ -50,13 +50,14 @@ export class MarianTranslator {
       'attention_mask': maskTensor
     });
     const hidden = encoded.GetValueByName('last_hidden_state') as OnnxTensor;
-    const hiddenBuffer = hidden.GetDataAsArrayBuffer();
+    const hiddenBuffer = hidden.GetDataAsArrayBuffer().slice(0);
+    const hiddenShape: number[] = [1, inputIds.length, 512];
     const generated: number[] = [this.tokenizer.padId];
     let output = '';
     for (let step = 0; step < 64; step++) {
       const decIds = int64Tensor(generated, [1, generated.length]);
       const decMask = int64Tensor(mask, [1, mask.length]);
-      const hiddenTensor = new OnnxTensor(hiddenBuffer, [1, inputIds.length, 512], OnnxArkTSType.FLOAT);
+      const hiddenTensor = new OnnxTensor(hiddenBuffer.slice(0), hiddenShape, OnnxArkTSType.FLOAT);
       const decoded: OnnxResult = this.decoder.Run({
         'input_ids': decIds,
         'encoder_attention_mask': decMask,
@@ -64,7 +65,7 @@ export class MarianTranslator {
       });
       const logits = decoded.GetValueByName('logits') as OnnxTensor;
       const values = new Float32Array(logits.GetDataAsArrayBuffer());
-      const width = 65001;
+      const width = Math.floor(values.length / generated.length);
       const last = (generated.length - 1) * width;
       let best = 0;
       let bestValue = values[last];

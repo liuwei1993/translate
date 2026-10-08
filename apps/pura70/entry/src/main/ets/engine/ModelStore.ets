@@ -15,8 +15,16 @@ function parentDir(path: string): string {
   return slash < 0 ? path : path.substring(0, slash);
 }
 
+function exists(path: string): boolean {
+  try {
+    return fileIo.accessSync(path);
+  } catch (err) {
+    return false;
+  }
+}
+
 function ensureDir(path: string): void {
-  if (!fileIo.accessSync(path)) {
+  if (!exists(path)) {
     fileIo.mkdirSync(path);
   }
 }
@@ -24,7 +32,7 @@ function ensureDir(path: string): void {
 function copyRaw(context: common.UIAbilityContext, relative: string, dest: string): void {
   const raw = context.resourceManager.getRawFdSync(relative);
   let same = false;
-  if (fileIo.accessSync(dest)) {
+  if (exists(dest)) {
     const stat = fileIo.statSync(dest);
     same = stat.size === raw.length;
   }
@@ -55,7 +63,6 @@ export function stageModels(context: common.UIAbilityContext): string {
   ensureDir(context.filesDir);
   ensureDir(root);
   ensureDir(`${root}/models`);
-  ensureDir(`${root}/models/asr`);
   ensureDir(`${root}/models/mt`);
   ensureDir(`${root}/models/mt/zh-en`);
   ensureDir(`${root}/models/mt/en-zh`);

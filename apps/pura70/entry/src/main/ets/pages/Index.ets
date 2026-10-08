@@ -19,6 +19,7 @@ struct Index {
   @State liveTranslation: string = '';
   @State lines: FrozenLine[] = [];
   @State peak: string = '0.00';
+  private starting: boolean = false;
   private capturer?: audio.AudioCapturer;
   private engine?: CaptionEngine;
 
@@ -87,18 +88,29 @@ struct Index {
       }
     }
     this.peak = max.toFixed(2);
-    if (this.engine !== undefined) {
+    if (this.engine === undefined) {
+      return;
+    }
+    try {
       const update = this.engine.accept(samples, Date.now());
       if (update !== undefined) {
         this.showUpdate(update.source, update.translation, update.final);
       }
+    } catch (err) {
+      const error = err as Error;
+      this.status = `识别失败 ${error.message}`;
     }
   }
 
   private async start(): Promise<void> {
+    if (this.listening || this.starting) {
+      return;
+    }
+    this.starting = true;
     const allowed = await this.requestMic();
     if (!allowed) {
       this.status = '需要麦克风才能出字幕';
+      this.starting = false;
       return;
     }
     try {
@@ -106,6 +118,7 @@ struct Index {
     } catch (err) {
       const error = err as BusinessError;
       this.status = `模型准备失败 ${error.message}`;
+      this.starting = false;
       return;
     }
     const streamInfo: audio.AudioStreamInfo = {
@@ -133,6 +146,7 @@ struct Index {
       const error = err as BusinessError;
       this.status = `打开麦克风失败 ${error.code}`;
     }
+    this.starting = false;
   }
 
   private async stop(): Promise<void> {
