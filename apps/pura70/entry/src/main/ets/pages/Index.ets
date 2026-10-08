@@ -1,7 +1,9 @@
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { audio } from '@kit.AudioKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CaptionEngine } from '../engine/CaptionEngine';
+import { stageModels } from '../engine/ModelStore';
 
 interface FrozenLine {
   source: string;
@@ -19,6 +21,7 @@ struct Index {
   @State lines: FrozenLine[] = [];
   @State peak: string = '0.00';
   private starting: boolean = false;
+  private translationReady: boolean = false;
   private capturer?: audio.AudioCapturer;
   private engine?: CaptionEngine;
 
@@ -68,8 +71,21 @@ struct Index {
       return;
     }
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    this.status = '正在准备识别';
+    this.status = '正在准备模型';
+    await new Promise<void>((resolve: () => void) => {
+      setTimeout(resolve, 50);
+    });
+    const root = stageModels(context);
     this.engine = new CaptionEngine(context.resourceManager, this.directionValue());
+    try {
+      this.engine.attachTranslator(root);
+      this.translationReady = true;
+    } catch (err) {
+      const error = err as Error;
+      this.translationReady = false;
+      hilog.error(0x0001, 'subtitle', 'open mt failed: %{public}s', error.message);
+      this.status = '翻译模型没有打开';
+    }
   }
 
   private onSamples(buffer: ArrayBuffer): void {
@@ -93,6 +109,10 @@ struct Index {
       const update = this.engine.accept(samples, Date.now());
       if (update !== undefined) {
         this.showUpdate(update.source, update.translation, update.final);
+        if (update.final && this.engine.problem().length > 0) {
+          hilog.error(0x0001, 'subtitle', 'translate failed: %{public}s', this.engine.problem());
+          this.status = '翻译失败';
+        }
       }
     } catch (err) {
       const error = err as Error;
@@ -139,7 +159,7 @@ struct Index {
       });
       await this.capturer.start();
       this.listening = true;
-      this.status = '正在听';
+      this.status = this.translationReady ? '正在听' : '正在听，翻译未就绪';
     } catch (err) {
       const error = err as BusinessError;
       this.status = `打开麦克风失败 ${error.code}`;
@@ -178,6 +198,13 @@ struct Index {
             this.liveTranslation = '';
             if (this.engine !== undefined) {
               this.engine.setDirection(this.directionValue());
+              this.translationReady = this.engine.problem().length === 0;
+              if (!this.translationReady) {
+                hilog.error(0x0001, 'subtitle', 'switch mt failed: %{public}s', this.engine.problem());
+                this.status = '翻译模型没有打开';
+              } else if (this.listening) {
+                this.status = '正在听';
+              }
             }
           })
         Blank()
