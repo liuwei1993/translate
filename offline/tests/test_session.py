@@ -70,3 +70,45 @@ def test_empty_asr_event_emits_nothing():
         direction=Direction.ZH_TO_EN,
     )
     assert session.feed([0.0], now=1.0) == []
+
+
+def test_partial_updates_inside_the_interval_are_dropped():
+    session = CaptionSession(
+        asr=ScriptedAsr(
+            [
+                AsrEvent("这个", final=False),
+                AsrEvent("这个多少", final=False),
+            ]
+        ),
+        translators={
+            Direction.ZH_TO_EN: PrefixTranslator("en"),
+            Direction.EN_TO_ZH: PrefixTranslator("zh"),
+        },
+        direction=Direction.ZH_TO_EN,
+        min_interval_s=0.3,
+    )
+    first = session.feed([0.0], now=1.0)
+    second = session.feed([0.0], now=1.1)
+    assert first[0]["source"] == "这个"
+    assert second == []
+
+
+def test_final_is_emitted_even_inside_the_interval():
+    session = CaptionSession(
+        asr=ScriptedAsr(
+            [
+                AsrEvent("这个", final=False),
+                AsrEvent("这个多少钱", final=True),
+            ]
+        ),
+        translators={
+            Direction.ZH_TO_EN: PrefixTranslator("en"),
+            Direction.EN_TO_ZH: PrefixTranslator("zh"),
+        },
+        direction=Direction.ZH_TO_EN,
+        min_interval_s=0.3,
+    )
+    session.feed([0.0], now=1.0)
+    captions = session.feed([0.0], now=1.1)
+    assert captions[0]["source"] == "这个多少钱"
+    assert captions[0]["final"] is True
