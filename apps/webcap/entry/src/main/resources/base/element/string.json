@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "网页同声字幕"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "打开网页字幕并保持录音"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "同声字幕"
+    },
+    {
+      "name": "mic_reason",
+      "value": "把听到的话转成字幕"
+    },
+    {
+      "name": "net_reason",
+      "value": "把录音送到电脑上的翻译服务"
+    }
+  ]
+}
