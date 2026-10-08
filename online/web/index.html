@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14160f">
+  <title>同声字幕</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <p class="brand">同声字幕</p>
+    <p id="status" class="status">准备</p>
+  </header>
+
+  <section id="panel-ready" class="panel">
+    <h1>选一个方向</h1>
+    <div class="choices" id="ready-choices">
+      <button type="button" class="choice selected" data-target="en">听中文 → 英文</button>
+      <button type="button" class="choice" data-target="zh">听英文 → 中文</button>
+    </div>
+    <p id="ready-error" class="notice" hidden></p>
+    <button type="button" id="start" class="primary">开始</button>
+  </section>
+
+  <section id="panel-listening" class="panel" hidden>
+    <div class="direction-row">
+      <button type="button" class="choice compact" data-target="en">听中文 → 英文</button>
+      <button type="button" class="choice compact" data-target="zh">听英文 → 中文</button>
+    </div>
+    <article class="live" aria-live="polite">
+      <p id="live-source" class="source"></p>
+      <p id="live-translation" class="translation"></p>
+    </article>
+    <ol id="history"></ol>
+    <button type="button" id="stop" class="ghost">停止</button>
+  </section>
+
+  <section id="panel-mic" class="panel" hidden>
+    <h1>需要麦克风</h1>
+    <p class="lead">请在浏览器里允许使用麦克风，然后重试。</p>
+    <button type="button" id="retry-mic" class="primary">再试一次</button>
+  </section>
+
+  <section id="panel-down" class="panel" hidden>
+    <h1>连接中断</h1>
+    <p class="lead">已经冻结的句子还在。重连后从新的一句开始。</p>
+    <ol id="down-history"></ol>
+    <button type="button" id="reconnect" class="primary">重新连接</button>
+  </section>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

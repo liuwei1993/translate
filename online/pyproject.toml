@@ -1,0 +1,9 @@
+[project]
+name = "online-caption"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["websockets>=12"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
