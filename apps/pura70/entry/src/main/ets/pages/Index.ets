@@ -2,7 +2,6 @@ import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { audio } from '@kit.AudioKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { CaptionEngine } from '../engine/CaptionEngine';
-import { stageModels } from '../engine/ModelStore';
 
 interface FrozenLine {
   source: string;
@@ -69,9 +68,8 @@ struct Index {
       return;
     }
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    this.status = '正在准备模型';
-    const root = stageModels(context);
-    this.engine = new CaptionEngine(context.resourceManager, root, this.directionValue());
+    this.status = '正在准备识别';
+    this.engine = new CaptionEngine(context.resourceManager, this.directionValue());
   }
 
   private onSamples(buffer: ArrayBuffer): void {
@@ -194,11 +192,11 @@ struct Index {
         ForEach(this.lines, (line: FrozenLine, index: number) => {
           ListItem() {
             Column() {
-              Text(line.source)
+              Text(line.translation.length > 0 ? line.source : '')
                 .fontSize(16)
                 .fontColor('#CCCCCC')
                 .width('100%')
-              Text(line.translation)
+              Text(line.translation.length > 0 ? line.translation : line.source)
                 .fontSize(20)
                 .fontColor('#FFFFFF')
                 .width('100%')
@@ -213,11 +211,11 @@ struct Index {
       .padding({ left: 16, right: 16 })
 
       Column() {
-        Text(this.liveSource)
+        Text(this.liveTranslation.length > 0 ? this.liveSource : '')
           .fontSize(18)
           .fontColor('#DDDDDD')
           .width('100%')
-        Text(this.liveTranslation)
+        Text(this.liveTranslation.length > 0 ? this.liveTranslation : this.liveSource)
           .fontSize(28)
           .fontColor('#FFFFFF')
           .width('100%')

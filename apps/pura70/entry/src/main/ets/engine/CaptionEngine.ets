@@ -5,7 +5,6 @@ import {
   OnlineStream,
   OnlineTransducerModelConfig
 } from 'sherpa_onnx';
-import { MarianTranslator } from '../mt/MarianTranslator';
 
 export class CaptionUpdate {
   source: string = '';
@@ -16,13 +15,11 @@ export class CaptionUpdate {
 export class CaptionEngine {
   private recognizer: OnlineRecognizer;
   private stream: OnlineStream;
-  private translator?: MarianTranslator;
-  private root: string;
   private direction: string;
   private lastSource: string = '';
   private lastAt: number = -1000000;
 
-  constructor(resourceManager: object, root: string, direction: string) {
+  constructor(resourceManager: object, direction: string) {
     const config = new OnlineRecognizerConfig();
     const model = new OnlineModelConfig();
     const transducer = new OnlineTransducerModelConfig();
@@ -41,9 +38,7 @@ export class CaptionEngine {
     config.rule3MinUtteranceLength = 20;
     this.recognizer = new OnlineRecognizer(config, resourceManager);
     this.stream = this.recognizer.createStream();
-    this.root = root;
     this.direction = direction;
-    this.loadTranslator(direction);
   }
 
   setDirection(direction: string): void {
@@ -54,8 +49,6 @@ export class CaptionEngine {
     this.lastSource = '';
     this.lastAt = -1000000;
     this.recognizer.reset(this.stream);
-    this.closeTranslator();
-    this.loadTranslator(direction);
   }
 
   accept(samples: Float32Array, now: number): CaptionUpdate | undefined {
@@ -77,9 +70,6 @@ export class CaptionEngine {
     const update = new CaptionUpdate();
     update.source = text;
     update.final = final;
-    if (final && this.translator !== undefined) {
-      update.translation = this.translator.translate(text);
-    }
     this.lastSource = text;
     this.lastAt = now;
     if (final) {
@@ -88,17 +78,5 @@ export class CaptionEngine {
       this.lastAt = -1000000;
     }
     return update;
-  }
-
-  private loadTranslator(direction: string): void {
-    const name = direction === 'en2zh' ? 'en-zh' : 'zh-en';
-    this.translator = new MarianTranslator(`${this.root}/models/mt/${name}`, `${this.root}/tok/${name}.json`);
-  }
-
-  private closeTranslator(): void {
-    if (this.translator !== undefined) {
-      this.translator.close();
-      this.translator = undefined;
-    }
   }
 }
