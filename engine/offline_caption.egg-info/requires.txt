@@ -1,0 +1,12 @@
+
+[asr]
+sherpa-onnx
+numpy
+
+[dev]
+pytest
+
+[mt]
+optimum[onnxruntime]
+transformers
+onnxruntime
