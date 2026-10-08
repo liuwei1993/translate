@@ -11,7 +11,6 @@ const liveTranslation = document.querySelector("#live-translation");
 const historyList = document.querySelector("#history");
 const downHistory = document.querySelector("#down-history");
 
-let target = "en";
 let socket = null;
 let mediaStream = null;
 let audioContext = null;
@@ -25,6 +24,45 @@ function blank() {
   return { source: "", translation: "" };
 }
 
+function shellBridge() {
+  const host = globalThis.harmonyShell;
+  if (!host || typeof host.start !== "function" || typeof host.stop !== "function") {
+    return null;
+  }
+  return host;
+}
+
+function decodePcm(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+globalThis.onHarmonyPcm = (b64) => {
+  if (!b64 || !socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  socket.send(decodePcm(b64));
+};
+
+globalThis.onHarmonyMicDenied = () => {
+  if (socket) {
+    socket.close();
+    socket = null;
+  }
+  show("mic");
+};
+
+function stopShell() {
+  const bridge = shellBridge();
+  if (bridge) {
+    bridge.stop();
+  }
+}
+
 function show(name) {
   for (const [key, panel] of Object.entries(panels)) {
     panel.hidden = key !== name;
@@ -36,12 +74,6 @@ function show(name) {
     down: "连接中断",
   };
   status.textContent = labels[name];
-}
-
-function selectedButtons() {
-  document.querySelectorAll(".choice").forEach((button) => {
-    button.classList.toggle("selected", button.dataset.target === target);
-  });
 }
 
 function renderHistory(list, items) {
@@ -124,6 +156,7 @@ async function releaseAudio() {
 
 async function userStop() {
   stopping = true;
+  stopShell();
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "stop" }));
     socket.close();
@@ -143,6 +176,7 @@ function onSocketClose() {
     pushHistory("partial");
   }
   socket = null;
+  stopShell();
   releaseAudio();
   show("down");
 }
@@ -182,7 +216,68 @@ function openSocket() {
   });
 }
 
+function attachSocket(ws) {
+  ws.addEventListener("message", (event) => {
+    const payload = JSON.parse(event.data);
+    if (payload.type === "source" || payload.type === "translation") {
+      onCaption(payload);
+      return;
+    }
+    if (payload.type !== "error") {
+      return;
+    }
+    if (payload.code === "auth" || payload.message === "连不上服务器") {
+      readyError.hidden = false;
+      readyError.textContent = payload.message;
+      userStop();
+      return;
+    }
+    if (payload.message === "连接中断") {
+      if (live.source || live.translation) {
+        pushHistory("partial");
+      }
+      stopping = true;
+      stopShell();
+      if (socket) {
+        socket.close();
+        socket = null;
+      }
+      releaseAudio();
+      show("down");
+      return;
+    }
+    pushHistory("failed", payload.message);
+  });
+  ws.addEventListener("close", onSocketClose);
+}
+
+async function startFromShell() {
+  stopping = false;
+  readyError.hidden = true;
+  let ws;
+  try {
+    ws = await openSocket();
+  } catch {
+    readyError.hidden = false;
+    readyError.textContent = "连不上服务器";
+    show("ready");
+    return;
+  }
+  socket = ws;
+  attachSocket(ws);
+  ws.send(JSON.stringify({ type: "start" }));
+  shellBridge().start();
+  if (stopping || !socket || socket.readyState !== WebSocket.OPEN) {
+    stopShell();
+    return;
+  }
+  show("listening");
+}
+
 async function start() {
+  if (shellBridge()) {
+    return startFromShell();
+  }
   stopping = false;
   readyError.hidden = true;
   let stream;
@@ -207,67 +302,15 @@ async function start() {
     return;
   }
   socket = ws;
-  ws.addEventListener("message", (event) => {
-    const payload = JSON.parse(event.data);
-    if (payload.type === "source" || payload.type === "translation") {
-      onCaption(payload);
-      return;
-    }
-    if (payload.type !== "error") {
-      return;
-    }
-    if (payload.code === "auth" || payload.message === "连不上服务器") {
-      readyError.hidden = false;
-      readyError.textContent = payload.message;
-      userStop();
-      return;
-    }
-    if (payload.message === "连接中断") {
-      if (live.source || live.translation) {
-        pushHistory("partial");
-      }
-      stopping = true;
-      if (socket) {
-        socket.close();
-        socket = null;
-      }
-      releaseAudio();
-      show("down");
-      return;
-    }
-    pushHistory("failed", payload.message);
-  });
-  ws.addEventListener("close", onSocketClose);
-  ws.send(JSON.stringify({ type: "start", target }));
+  attachSocket(ws);
+  ws.send(JSON.stringify({ type: "start" }));
   await startAudio(stream);
   if (stopping || !socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
   await requestWakeLock();
   show("listening");
-  selectedButtons();
 }
-
-document.querySelector("#ready-choices").addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button) {
-    return;
-  }
-  target = button.dataset.target;
-  selectedButtons();
-});
-
-document.querySelector("#panel-listening .direction-row").addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button || button.dataset.target === target || !socket) {
-    return;
-  }
-  target = button.dataset.target;
-  selectedButtons();
-  live = blank();
-  render();
-  socket.send(JSON.stringify({ type: "start", target }));
-});
 
 document.querySelector("#start").addEventListener("click", start);
 document.querySelector("#retry-mic").addEventListener("click", start);
@@ -275,10 +318,12 @@ document.querySelector("#reconnect").addEventListener("click", start);
 document.querySelector("#stop").addEventListener("click", userStop);
 
 document.addEventListener("visibilitychange", () => {
+  if (shellBridge()) {
+    return;
+  }
   if (document.visibilityState === "hidden" && socket) {
     userStop();
   }
 });
 
-selectedButtons();
 show("ready");

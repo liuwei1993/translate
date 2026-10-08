@@ -14,6 +14,9 @@ class GatewaySession:
     def mapper(self) -> CaptionMapper:
         return self._mapper
 
+    def open_for_auto(self) -> None:
+        self._open = True
+
     def start(self, target: str) -> list[dict]:
         update = session_update(target)
         outgoing: list[dict] = []

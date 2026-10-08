@@ -14,20 +14,13 @@
   </header>
 
   <section id="panel-ready" class="panel">
-    <h1>选一个方向</h1>
-    <div class="choices" id="ready-choices">
-      <button type="button" class="choice selected" data-target="en">听中文 → 英文</button>
-      <button type="button" class="choice" data-target="zh">听英文 → 中文</button>
-    </div>
+    <h1>对着手机说话</h1>
+    <p class="lead">说中文就出英文，说英文就出中文。</p>
     <p id="ready-error" class="notice" hidden></p>
     <button type="button" id="start" class="primary">开始</button>
   </section>
 
   <section id="panel-listening" class="panel" hidden>
-    <div class="direction-row">
-      <button type="button" class="choice compact" data-target="en">听中文 → 英文</button>
-      <button type="button" class="choice compact" data-target="zh">听英文 → 中文</button>
-    </div>
     <article class="live" aria-live="polite">
       <p id="live-source" class="source"></p>
       <p id="live-translation" class="translation"></p>

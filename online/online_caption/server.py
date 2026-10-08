@@ -1,5 +1,6 @@
 """HTTPS 页面和浏览器 WebSocket。模型密钥不出这个进程。"""
 
+import argparse
 import asyncio
 import contextlib
 import json
@@ -14,7 +15,9 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Response
 
+from online_caption.direction import CaptionRouter
 from online_caption.gateway import GatewaySession
+from online_caption.model_map import session_update
 from online_caption.upstream import (
     AuthError,
     LiveTranslateClient,
@@ -109,22 +112,25 @@ class BrowserBridge:
 
     async def __call__(self, websocket) -> None:
         session = GatewaySession()
-        client: LiveTranslateClient | None = None
-        reader: asyncio.Task | None = None
+        clients: dict[str, LiveTranslateClient] = {}
+        readers: list[asyncio.Task] = []
         pending_audio: list[bytes] = []
+        router = CaptionRouter()
+        auto = False
 
         async def send_browser(events: list[dict]) -> None:
             for event in events:
                 await websocket.send(json.dumps(event, ensure_ascii=False))
 
-        async def cancel_reader() -> None:
-            nonlocal reader
-            if reader is None:
-                return
-            reader.cancel()
-            with contextlib.suppress(asyncio.CancelledError, ConnectionClosed, Exception):
-                await reader
-            reader = None
+        async def cancel_readers() -> None:
+            nonlocal readers
+            current = readers
+            readers = []
+            for task in current:
+                task.cancel()
+            for task in current:
+                with contextlib.suppress(asyncio.CancelledError, ConnectionClosed, Exception):
+                    await task
 
         async def close_client(current: LiveTranslateClient | None, finish_event: dict | None) -> None:
             if current is None:
@@ -140,27 +146,31 @@ class BrowserBridge:
                 with contextlib.suppress(Exception):
                     await current.aclose()
 
-        async def flush_audio(current: LiveTranslateClient) -> None:
-            while pending_audio and current.ready:
+        def lanes_ready() -> bool:
+            return bool(clients) and all(item.ready for item in clients.values())
+
+        async def flush_audio() -> None:
+            while pending_audio and lanes_ready():
                 chunk = pending_audio.pop(0)
                 for event in session.audio(chunk):
-                    await current.send_event(event)
+                    for item in clients.values():
+                        await item.send_event(event)
 
-        async def pump(current: LiveTranslateClient) -> None:
-            nonlocal client
+        async def pump(lane: str, current: LiveTranslateClient) -> None:
             try:
                 while True:
                     events = await current.read()
-                    if current.ready:
-                        await flush_audio(current)
+                    if lanes_ready():
+                        await flush_audio()
+                    if auto:
+                        events = router.feed(lane, events)
                     if events:
                         await send_browser(events)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.info("模型连接中断")
-                if client is current:
-                    client = None
+                clients.pop(lane, None)
                 with contextlib.suppress(Exception):
                     await send_browser(session.disconnect())
 
@@ -173,9 +183,7 @@ class BrowserBridge:
                     additional_headers={"Authorization": authorization},
                 )
 
-            current = LiveTranslateClient(
-                self._settings, connector, mapper=session.mapper
-            )
+            current = LiveTranslateClient(self._settings, connector)
             try:
                 await current.connect()
             except AuthError:
@@ -195,21 +203,23 @@ class BrowserBridge:
         try:
             async for message in websocket:
                 if isinstance(message, bytes):
-                    if client is None:
+                    if not clients:
                         continue
-                    if not client.ready:
+                    if not lanes_ready():
                         pending_audio.append(message)
                         continue
                     try:
-                        await flush_audio(client)
+                        await flush_audio()
                         for event in session.audio(message):
-                            await client.send_event(event)
+                            for item in clients.values():
+                                await item.send_event(event)
                     except Exception:
                         logger.info("发送音频失败")
-                        await cancel_reader()
-                        dead = client
-                        client = None
-                        await close_client(dead, None)
+                        await cancel_readers()
+                        dead = list(clients.values())
+                        clients.clear()
+                        for item in dead:
+                            await close_client(item, None)
                         await send_browser(session.disconnect())
                     continue
                 try:
@@ -218,37 +228,59 @@ class BrowserBridge:
                     continue
                 kind = payload.get("type")
                 if kind == "start":
+                    raw_target = payload.get("target")
+                    use_auto = raw_target in (None, "", "auto")
+                    if clients:
+                        await cancel_readers()
+                        finish_event = {"type": "session.finish"}
+                        for item in list(clients.values()):
+                            await close_client(item, finish_event)
+                        clients.clear()
+                        session.stop()
                     try:
-                        outgoing = session.start(str(payload.get("target", "")))
+                        outgoing = [] if use_auto else session.start(str(raw_target))
                     except ValueError:
                         await send_browser(
                             [{"type": "error", "code": "upstream", "message": "方向不对"}]
                         )
                         continue
-                    if client is not None:
-                        await cancel_reader()
-                        await close_client(client, outgoing[0])
-                        client = None
                     pending_audio.clear()
-                    client = await open_client()
-                    if client is None:
-                        session.stop()
+                    lanes = ("en", "zh") if use_auto else (str(raw_target),)
+                    opened: dict[str, LiveTranslateClient] = {}
+                    for lane in lanes:
+                        current = await open_client()
+                        if current is None:
+                            for item in opened.values():
+                                await close_client(item, None)
+                            session.stop()
+                            opened = {}
+                            break
+                        update = outgoing[-1] if outgoing else session_update(lane)
+                        await current.send_event(update)
+                        opened[lane] = current
+                    if not opened:
                         continue
-                    await client.send_event(outgoing[-1])
-                    reader = asyncio.create_task(pump(client))
+                    if use_auto:
+                        session.open_for_auto()
+                    clients.update(opened)
+                    auto = use_auto
+                    for lane, item in opened.items():
+                        readers.append(asyncio.create_task(pump(lane, item)))
                 elif kind == "stop":
                     outgoing = session.stop()
-                    await cancel_reader()
+                    await cancel_readers()
                     finish_event = outgoing[0] if outgoing else None
-                    await close_client(client, finish_event)
-                    client = None
+                    for item in list(clients.values()):
+                        await close_client(item, finish_event)
+                    clients.clear()
         except ConnectionClosed:
             pass
         finally:
-            await cancel_reader()
+            await cancel_readers()
             outgoing = session.stop()
             finish_event = outgoing[0] if outgoing else None
-            await close_client(client, finish_event)
+            for item in list(clients.values()):
+                await close_client(item, finish_event)
 
 
 async def process_request(connection, request):
@@ -261,14 +293,28 @@ async def process_request(connection, request):
     return http_file(200, file_path.read_bytes(), content_type)
 
 
-async def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--http", action="store_true", help="用 HTTP 和 ws，不启用证书")
+    parser.add_argument("--port", type=int, default=None)
+    return parser.parse_args(argv)
+
+
+async def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    args = parse_args(argv)
     settings = load_settings()
-    cert_path, key_path = ensure_certificate(CERT_DIR)
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain(cert_path, key_path)
+    ssl_context = None
+    scheme = "http"
+    port = args.port if args.port is not None else 9000
+    if not args.http:
+        cert_path, key_path = ensure_certificate(CERT_DIR)
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(cert_path, key_path)
+        scheme = "https"
+        if args.port is None:
+            port = 8443
     bridge = BrowserBridge(settings)
-    port = 8443
     async with serve(
         bridge,
         "0.0.0.0",
@@ -278,8 +324,9 @@ async def main() -> None:
         max_size=2**20,
     ):
         for ip in local_ips():
-            logger.info("打开 https://%s:%s", ip, port)
-        logger.info("手机第一次打开时，在 Chrome 里继续前往这个不受信任的证书。")
+            logger.info("打开 %s://%s:%s", scheme, ip, port)
+        if scheme == "https":
+            logger.info("手机第一次打开时，在 Chrome 里继续前往这个不受信任的证书。")
         await asyncio.Future()
 
 
