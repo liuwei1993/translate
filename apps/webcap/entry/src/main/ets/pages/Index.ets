@@ -79,7 +79,9 @@ struct Index {
     }
     this.pcmParts = [];
     this.pcmBytes = 0;
-    this.pushPcm(merged.buffer);
+    const copy = new ArrayBuffer(merged.byteLength);
+    new Uint8Array(copy).set(merged);
+    this.pushPcm(copy);
   }
 
   private pushPcm(buffer: ArrayBuffer): void {

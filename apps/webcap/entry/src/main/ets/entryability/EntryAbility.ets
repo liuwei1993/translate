@@ -3,6 +3,19 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
+const PAGE_COLOR = '#14160F';
+const BAR_CONTENT = '#F3F0E6';
+
+function paintSystemBars(win: window.Window): void {
+  win.setWindowSystemBarProperties({
+    statusBarColor: PAGE_COLOR,
+    statusBarContentColor: BAR_CONTENT,
+    navigationBarColor: PAGE_COLOR,
+    navigationBarContentColor: BAR_CONTENT
+  }).catch((error: Error) => {
+    hilog.error(DOMAIN, 'webcap', 'system bars failed: %{public}s', error.message);
+  });
+}
 
 function holdScreen(win: window.Window): void {
   win.setWindowKeepScreenOn(true).catch((error: Error) => {
@@ -30,6 +43,7 @@ export default class EntryAbility extends UIAbility {
     windowStage.getMainWindow().then((win: window.Window) => {
       this.mainWindow = win;
       holdScreen(win);
+      paintSystemBars(win);
     }).catch((error: Error) => {
       hilog.error(DOMAIN, 'webcap', 'Failed to get window. Cause: %{public}s', error.message);
     });
@@ -38,6 +52,7 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     if (this.mainWindow) {
       holdScreen(this.mainWindow);
+      paintSystemBars(this.mainWindow);
     }
   }
 

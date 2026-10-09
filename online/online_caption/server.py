@@ -100,6 +100,7 @@ def http_file(status: int, body: bytes, content_type: str) -> Response:
             ("Connection", "close"),
             ("Content-Length", str(len(body))),
             ("Content-Type", content_type),
+            ("Cache-Control", "no-store"),
         ]
     )
     reason = "OK" if status == 200 else "Not Found"
@@ -116,7 +117,6 @@ class BrowserBridge:
         readers: list[asyncio.Task] = []
         pending_audio: list[bytes] = []
         router = CaptionRouter()
-        auto = False
 
         async def send_browser(events: list[dict]) -> None:
             for event in events:
@@ -162,8 +162,7 @@ class BrowserBridge:
                     events = await current.read()
                     if lanes_ready():
                         await flush_audio()
-                    if auto:
-                        events = router.feed(lane, events)
+                    events = router.feed(lane, events)
                     if events:
                         await send_browser(events)
             except asyncio.CancelledError:
@@ -171,6 +170,8 @@ class BrowserBridge:
             except Exception:
                 logger.info("模型连接中断")
                 clients.pop(lane, None)
+                if clients:
+                    return
                 with contextlib.suppress(Exception):
                     await send_browser(session.disconnect())
 
@@ -228,8 +229,12 @@ class BrowserBridge:
                     continue
                 kind = payload.get("type")
                 if kind == "start":
-                    raw_target = payload.get("target")
-                    use_auto = raw_target in (None, "", "auto")
+                    raw_target = payload.get("target") or "auto"
+                    if raw_target not in ("auto", "en", "zh"):
+                        await send_browser(
+                            [{"type": "error", "code": "upstream", "message": "方向不对"}]
+                        )
+                        continue
                     if clients:
                         await cancel_readers()
                         finish_event = {"type": "session.finish"}
@@ -237,17 +242,10 @@ class BrowserBridge:
                             await close_client(item, finish_event)
                         clients.clear()
                         session.stop()
-                    try:
-                        outgoing = [] if use_auto else session.start(str(raw_target))
-                    except ValueError:
-                        await send_browser(
-                            [{"type": "error", "code": "upstream", "message": "方向不对"}]
-                        )
-                        continue
+                    router.set_mode(raw_target)
                     pending_audio.clear()
-                    lanes = ("en", "zh") if use_auto else (str(raw_target),)
                     opened: dict[str, LiveTranslateClient] = {}
-                    for lane in lanes:
+                    for lane in ("en", "zh"):
                         current = await open_client()
                         if current is None:
                             for item in opened.values():
@@ -255,15 +253,12 @@ class BrowserBridge:
                             session.stop()
                             opened = {}
                             break
-                        update = outgoing[-1] if outgoing else session_update(lane)
-                        await current.send_event(update)
+                        await current.send_event(session_update(lane))
                         opened[lane] = current
                     if not opened:
                         continue
-                    if use_auto:
-                        session.open_for_auto()
+                    session.open_for_auto()
                     clients.update(opened)
-                    auto = use_auto
                     for lane, item in opened.items():
                         readers.append(asyncio.create_task(pump(lane, item)))
                 elif kind == "stop":

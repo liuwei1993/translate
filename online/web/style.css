@@ -56,6 +56,40 @@ h1 {
   margin-bottom: 1.25rem;
 }
 
+.direction { position: relative; margin-bottom: 0.4rem; }
+.direction-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+}
+.chevron { color: var(--gold); }
+.menu {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  display: flex;
+  flex-direction: column;
+  background: #1b1e16;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+.menu[hidden] { display: none; }
+.menu button {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  background: transparent;
+}
+.menu button:last-child { border-bottom: 0; }
+.menu button[aria-checked="true"] { color: var(--gold); }
+
 .panel { display: flex; flex-direction: column; gap: 0.75rem; }
 .panel[hidden] { display: none; }
 

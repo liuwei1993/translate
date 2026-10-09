@@ -4,21 +4,28 @@
 def speech_language(text: str) -> str | None:
     cjk = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
     latin = sum(1 for char in text if char.isascii() and char.isalpha())
-    if cjk == 0 and latin == 0:
-        return None
-    if cjk > 0 and latin == 0:
+    if cjk > 0:
         return "zh"
-    if latin > 0 and cjk == 0:
+    if latin > 0:
         return "en"
-    return "zh" if cjk >= latin else "en"
+    return None
 
 
 class CaptionRouter:
-    """两路译文里，只把和原文相对的那一路交给页面。"""
+    """只把和原文不同语种的译文交给页面。英文原文配中文译文，中文原文配英文译文。"""
 
-    def __init__(self) -> None:
-        self.target: str | None = None
-        self._held: dict[str, list[dict]] = {"en": [], "zh": []}
+    def __init__(self, mode: str = "auto") -> None:
+        self.mode = "auto"
+        self._source_text = ""
+        self._source_lang: str | None = None
+        self._latest: dict[str, dict | None] = {"en": None, "zh": None}
+        self._emitted: tuple[str, bool] | None = None
+        self.set_mode(mode)
+
+    def set_mode(self, mode: str) -> None:
+        if mode not in ("auto", "en", "zh"):
+            raise ValueError(mode)
+        self.mode = mode
 
     def feed(self, lane: str, events: list[dict]) -> list[dict]:
         outgoing: list[dict] = []
@@ -33,38 +40,49 @@ class CaptionRouter:
         if kind == "source":
             if lane != "en":
                 return []
-            previous = self.target
-            self._apply(event.get("text") or "")
-            released = self._take_held()
-            if previous is not None and self.target != previous:
-                return [{"type": "translation", "text": "", "final": False}, event, *released]
-            return [event, *released]
+            text = event.get("text") or ""
+            fresh = bool(self._source_text) and not text.startswith(self._source_text)
+            had_translation = self._emitted not in (None, ("", False))
+            if fresh:
+                self._latest = {
+                    name: item
+                    for name, item in self._latest.items()
+                    if item and not item.get("final")
+                }
+                self._emitted = None
+            self._source_text = text
+            self._source_lang = speech_language(text)
+            picked = self._pick()
+            if fresh and had_translation and not picked:
+                self._emitted = ("", False)
+                return [event, {"type": "translation", "text": "", "final": False}]
+            return [event, *picked]
         if kind != "translation":
             return []
-        if self.target is None:
-            self._held.setdefault(lane, []).append(event)
-            return []
-        if lane != self.target:
-            return []
-        if event.get("final"):
-            self.target = None
-            self._held = {"en": [], "zh": []}
-        return [event]
+        self._latest[lane] = event
+        return self._pick()
 
-    def _apply(self, text: str) -> None:
-        detected = speech_language(text)
-        if detected is None:
-            return
-        self.target = "en" if detected == "zh" else "zh"
-        other = "zh" if self.target == "en" else "en"
-        self._held[other] = []
-
-    def _take_held(self) -> list[dict]:
-        if self.target is None:
+    def _pick(self) -> list[dict]:
+        if self._source_lang is None:
             return []
-        held = self._held.get(self.target, [])
-        self._held[self.target] = []
-        if any(item.get("final") for item in held):
-            self.target = None
-            self._held = {"en": [], "zh": []}
-        return held
+        if self.mode == "zh" and self._source_lang != "en":
+            return self._clear()
+        if self.mode == "en" and self._source_lang != "zh":
+            return self._clear()
+        want = "zh" if self._source_lang == "en" else "en"
+        item = self._latest.get(want)
+        if not item or not (item.get("text") or "").strip():
+            return self._clear()
+        if speech_language(item["text"]) != want:
+            return self._clear()
+        key = (item.get("text") or "", bool(item.get("final")))
+        if key == self._emitted:
+            return []
+        self._emitted = key
+        return [item]
+
+    def _clear(self) -> list[dict]:
+        if self._emitted in (None, ("", False)):
+            return []
+        self._emitted = ("", False)
+        return [{"type": "translation", "text": "", "final": False}]

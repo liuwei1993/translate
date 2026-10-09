@@ -12,6 +12,7 @@ const historyList = document.querySelector("#history");
 const downHistory = document.querySelector("#down-history");
 
 let socket = null;
+let mode = "auto";
 let mediaStream = null;
 let audioContext = null;
 let workletNode = null;
@@ -19,6 +20,64 @@ let wakeLock = null;
 let stopping = false;
 let live = blank();
 let history = [];
+
+const MODES = {
+  auto: "中英文互译",
+  en: "中文 → 英文",
+  zh: "英文 → 中文",
+};
+const LEADS = {
+  auto: "说中文就出英文，说英文就出中文。",
+  en: "只把中文译成英文。",
+  zh: "只把英文译成中文。",
+};
+const directionToggle = document.querySelector("#direction-toggle");
+const directionMenu = document.querySelector("#direction-menu");
+const directionLabel = document.querySelector("#direction-label");
+const lead = document.querySelector("#lead");
+
+function startMessage() {
+  return JSON.stringify({ type: "start", target: mode });
+}
+
+function setMode(next) {
+  mode = next;
+  directionLabel.textContent = MODES[mode];
+  if (lead) {
+    lead.textContent = LEADS[mode];
+  }
+  directionMenu.querySelectorAll("button").forEach((button) => {
+    button.setAttribute("aria-checked", button.dataset.mode === mode ? "true" : "false");
+  });
+  directionMenu.hidden = true;
+  directionToggle.setAttribute("aria-expanded", "false");
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    live = blank();
+    render();
+    socket.send(startMessage());
+  }
+}
+
+directionToggle.addEventListener("click", () => {
+  const open = directionMenu.hidden;
+  directionMenu.hidden = !open;
+  directionToggle.setAttribute("aria-expanded", open ? "true" : "false");
+});
+
+directionMenu.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) {
+    return;
+  }
+  setMode(button.dataset.mode);
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".direction")) {
+    directionMenu.hidden = true;
+    directionToggle.setAttribute("aria-expanded", "false");
+  }
+});
 
 function blank() {
   return { source: "", translation: "" };
@@ -265,7 +324,7 @@ async function startFromShell() {
   }
   socket = ws;
   attachSocket(ws);
-  ws.send(JSON.stringify({ type: "start" }));
+  ws.send(startMessage());
   shellBridge().start();
   if (stopping || !socket || socket.readyState !== WebSocket.OPEN) {
     stopShell();
@@ -303,7 +362,7 @@ async function start() {
   }
   socket = ws;
   attachSocket(ws);
-  ws.send(JSON.stringify({ type: "start" }));
+  ws.send(startMessage());
   await startAudio(stream);
   if (stopping || !socket || socket.readyState !== WebSocket.OPEN) {
     return;

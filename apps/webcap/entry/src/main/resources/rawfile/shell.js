@@ -95,21 +95,12 @@
   };
 
   function startMessage() {
-    var button = document.querySelector('.choice.selected');
-    if (!button) {
+    var selected = document.querySelector('#direction-menu button[aria-checked="true"]');
+    var mode = selected ? selected.getAttribute('data-mode') : 'auto';
+    if (!mode || mode === 'auto') {
       return { type: 'start' };
     }
-    return { type: 'start', target: button.getAttribute('data-target') || 'en' };
-  }
-
-  function markSelected(value) {
-    document.querySelectorAll('.choice').forEach(function (button) {
-      if (button.getAttribute('data-target') === value) {
-        button.classList.add('selected');
-      } else {
-        button.classList.remove('selected');
-      }
-    });
+    return { type: 'start', target: mode };
   }
 
   function stopAll() {
@@ -235,15 +226,17 @@
   rebind('retry-mic', begin);
   rebind('reconnect', begin);
   rebind('stop', stopAll);
-  document.querySelectorAll('.choice').forEach(function (button) {
-    button.addEventListener('click', function () {
-      var value = button.getAttribute('data-target');
-      markSelected(value);
-      if (socket && socket.readyState === 1 && button.closest('#panel-listening')) {
+  var menu = document.getElementById('direction-menu');
+  if (menu) {
+    menu.addEventListener('click', function () {
+      setTimeout(function () {
+        if (!socket || socket.readyState !== 1) {
+          return;
+        }
         live = { source: '', translation: '' };
         render();
-        socket.send(JSON.stringify({ type: 'start', target: value }));
-      }
+        socket.send(JSON.stringify(startMessage()));
+      }, 0);
     });
-  });
+  }
 })();
