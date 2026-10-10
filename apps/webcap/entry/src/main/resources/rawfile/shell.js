@@ -73,7 +73,7 @@
       render();
       return;
     }
-    history.push({ source: live.source, translation: live.translation, kind: kind });
+    history.unshift({ source: live.source, translation: live.translation, kind: kind });
     live = { source: '', translation: '' };
     render();
   }

@@ -158,7 +158,7 @@ function renderHistory(list, items) {
     row.append(source, translation);
     list.append(row);
   }
-  list.scrollTop = list.scrollHeight;
+  list.scrollTop = 0;
 }
 
 function render() {
@@ -172,7 +172,7 @@ function pushHistory(kind, note) {
   if (!live.source && !live.translation && kind === "ok") {
     return;
   }
-  history.push({
+  history.unshift({
     source: live.source,
     translation: live.translation,
     kind,
