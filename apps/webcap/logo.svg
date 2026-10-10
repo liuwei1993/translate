@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="blue-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2aa7ff"/>
+      <stop offset="50%" stop-color="#0e84ff"/>
+      <stop offset="100%" stop-color="#005cf0"/>
+    </linearGradient>
+    <linearGradient id="mint-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5af5cf"/>
+      <stop offset="100%" stop-color="#2cd9a6"/>
+    </linearGradient>
+    <linearGradient id="tag-mint" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3eefbf"/>
+      <stop offset="100%" stop-color="#26dbaa"/>
+    </linearGradient>
+
+    <filter id="soft-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="blur"/>
+      <feOffset dx="0" dy="3" result="off"/>
+      <feFlood flood-color="#1a6fd4" flood-opacity="0.26" result="color"/>
+      <feComposite in="color" in2="off" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="mint-shadow" x="-45%" y="-45%" width="190%" height="190%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3.5" result="blur"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feFlood flood-color="#149e78" flood-opacity="0.24" result="color"/>
+      <feComposite in="color" in2="off" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 氛围底，贴近设计稿 -->
+  <rect width="512" height="512" fill="#f7fcff"/>
+  <ellipse cx="256" cy="252" rx="200" ry="188" fill="#e6f5ff" opacity="0.7"/>
+
+  <!-- ========== 蓝色主结构（圆角胶囊描边） ========== -->
+  <g filter="url(#soft-shadow)"
+     fill="none"
+     stroke="url(#blue-grad)"
+     stroke-width="26"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <!-- 言字旁 · 点 -->
+    <path d="M 120 128 L 148 150"/>
+
+    <!-- 言字旁 · 折钩：横 → 竖 → 提 -->
+    <path d="M 104 208 H 152 V 318 L 178 296"/>
+
+    <!-- 右上横折撇 -->
+    <path d="M 198 134 H 318 Q 338 134 338 156 Q 338 172 318 190 L 268 236"/>
+
+    <!-- 右下上横 -->
+    <path d="M 204 262 H 318"/>
+
+    <!-- 右下竖笔 -->
+    <path d="M 262 236 V 362 L 250 378"/>
+  </g>
+
+  <!-- ========== 薄荷绿玻璃叠层 ========== -->
+  <g filter="url(#mint-shadow)"
+     fill="none"
+     stroke="url(#mint-grad)"
+     stroke-width="24"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     opacity="0.86">
+
+    <!-- 斜向贯穿笔：左中 → 斜上 → 水平接到声波根部 -->
+    <path d="M 198 220 L 278 150 L 290 164 L 268 204 L 352 236"/>
+
+    <!-- 下横 -->
+    <path d="M 194 310 H 340"/>
+  </g>
+
+  <!-- ========== 声波 4 柱 ========== -->
+  <g id="soundwave" fill="url(#mint-grad)" filter="url(#mint-shadow)" opacity="0.9">
+    <rect x="362" y="176" width="12" height="78" rx="6"/>
+    <rect x="380" y="194" width="11" height="60" rx="5.5"/>
+    <rect x="397" y="210" width="10" height="44" rx="5"/>
+    <rect x="413" y="224" width="10" height="20" rx="5"/>
+  </g>
+
+  <!-- ========== 右上角徽标 ========== -->
+  <g id="corner-tag" stroke-linecap="round">
+    <path d="M 372 102 L 380 116"
+          stroke="url(#blue-grad)" stroke-width="10"/>
+    <path d="M 388 94 L 404 122"
+          stroke="url(#blue-grad)" stroke-width="10"/>
+    <path d="M 408 114 H 432"
+          stroke="url(#tag-mint)" stroke-width="11"/>
+  </g>
+</svg>
