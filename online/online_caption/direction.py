@@ -27,8 +27,15 @@ def lanes_for(mode: str) -> tuple[str, str]:
         raise ValueError(mode) from None
 
 
+def _is_kana(char: str) -> bool:
+    code = ord(char)
+    if 0x3041 <= code <= 0x3096 or 0x30A1 <= code <= 0x30FA or code == 0x30FC:
+        return True
+    return 0xFF66 <= code <= 0xFF9D
+
+
 def speech_language(text: str, languages: tuple[str, ...] = ("en", "zh")) -> str | None:
-    kana = sum(1 for char in text if "\u3040" <= char <= "\u30ff")
+    kana = sum(1 for char in text if _is_kana(char))
     han = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
     latin = sum(1 for char in text if char.isascii() and char.isalpha())
     if "ja" in languages and kana > 0:
@@ -55,14 +62,13 @@ class CaptionRouter:
 
     def set_mode(self, mode: str) -> None:
         lanes = lanes_for(mode)
-        if lanes != self._lanes:
-            self._lanes = lanes
-            self._latest = {name: None for name in lanes}
-            self._source_text = ""
-            self._source_lang = None
-            self._emitted = None
         self.mode = mode
+        self._lanes = lanes
         self._source_lane = "en" if "en" in lanes else "zh"
+        self._latest = {name: None for name in lanes}
+        self._source_text = ""
+        self._source_lang = None
+        self._emitted = None
 
     def feed(self, lane: str, events: list[dict]) -> list[dict]:
         outgoing: list[dict] = []
@@ -111,13 +117,26 @@ class CaptionRouter:
         item = self._latest.get(want)
         if not item or not (item.get("text") or "").strip():
             return self._clear()
-        if speech_language(item["text"], self._lanes) != want:
+        if not self._translation_ok(item["text"], want):
             return self._clear()
         key = (item.get("text") or "", bool(item.get("final")))
         if key == self._emitted:
             return []
         self._emitted = key
         return [item]
+
+    def _translation_ok(self, text: str, want: str) -> bool:
+        detected = speech_language(text, self._lanes)
+        if detected == want:
+            return True
+        if want != "ja" or detected != "zh":
+            return False
+        stripped = text.strip()
+        if not stripped or stripped == self._source_text.strip():
+            return False
+        chinese = self._latest.get("zh")
+        chinese_text = ((chinese or {}).get("text") or "").strip()
+        return stripped != chinese_text
 
     def _clear(self) -> list[dict]:
         if self._emitted in (None, ("", False)):

@@ -14,6 +14,9 @@ def test_speech_language_treats_kana_as_japanese_on_the_japanese_pair():
     assert speech_language("你好", ("zh", "ja")) == "zh"
     assert speech_language("了解", ("zh", "ja")) == "zh"
     assert speech_language("It's twenty", ("zh", "ja")) is None
+    assert speech_language("迈克尔・乔丹", ("zh", "ja")) == "zh"
+    assert speech_language("迈克尔·乔丹", ("zh", "ja")) == "zh"
+    assert speech_language("ｻﾝﾌﾟﾙ", ("zh", "ja")) == "ja"
 
 
 def test_lanes_follow_the_selected_pair():
@@ -133,6 +136,49 @@ def test_japanese_target_ignores_japanese_speech():
     assert router.feed("ja", [{"type": "translation", "text": "こんにちは", "final": False}]) == [
         {"type": "translation", "text": "こんにちは", "final": False}
     ]
+
+
+def test_kanji_only_japanese_translation_is_shown_when_it_is_not_an_echo():
+    router = CaptionRouter("ja")
+    router.feed("zh", [{"type": "source", "text": "我知道了", "final": False}])
+    assert router.feed("ja", [{"type": "translation", "text": "了解", "final": False}]) == [
+        {"type": "translation", "text": "了解", "final": False}
+    ]
+    tokyo = CaptionRouter("ja-auto")
+    tokyo.feed("zh", [{"type": "source", "text": "东京", "final": False}])
+    assert tokyo.feed("ja", [{"type": "translation", "text": "東京", "final": False}]) == [
+        {"type": "translation", "text": "東京", "final": False}
+    ]
+
+
+def test_kanji_only_japanese_echo_is_hidden():
+    router = CaptionRouter("ja-auto")
+    router.feed("zh", [{"type": "source", "text": "你好", "final": False}])
+    assert router.feed("ja", [{"type": "translation", "text": "你好", "final": False}]) == []
+    router.feed("zh", [{"type": "source", "text": "我知道了", "final": False}])
+    assert router.feed("ja", [{"type": "translation", "text": "了解", "final": False}]) == [
+        {"type": "translation", "text": "了解", "final": False}
+    ]
+    assert router.feed("zh", [{"type": "translation", "text": "了解", "final": False}]) == [
+        {"type": "translation", "text": "", "final": False}
+    ]
+
+
+def test_chinese_name_with_katakana_middle_dot_uses_the_japanese_lane():
+    router = CaptionRouter("ja-auto")
+    router.feed("ja", [{"type": "translation", "text": "マイケル・ジョーダン", "final": False}])
+    shown = router.feed("zh", [{"type": "source", "text": "迈克尔・乔丹", "final": False}])
+    assert {"type": "source", "text": "迈克尔・乔丹", "final": False} in shown
+    assert {"type": "translation", "text": "マイケル・ジョーダン", "final": False} in shown
+
+
+def test_switching_direction_drops_the_previous_translation():
+    router = CaptionRouter("ja-auto")
+    router.feed("zh", [{"type": "source", "text": "こんにちは", "final": False}])
+    router.feed("zh", [{"type": "translation", "text": "你好呀", "final": False}])
+    router.set_mode("ja2zh")
+    shown = router.feed("zh", [{"type": "source", "text": "おはよう", "final": False}])
+    assert shown == [{"type": "source", "text": "おはよう", "final": False}]
 
 
 def test_chinese_from_japanese_ignores_chinese_and_kanji_only():
