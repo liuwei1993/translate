@@ -56,3 +56,7 @@ def test_session_update_is_text_only():
     zh = session_update("zh")
     assert zh["session"]["translation"]["language"] == "zh"
     assert zh["session"]["output_modalities"] == ["text"]
+
+    ja = session_update("ja")
+    assert ja["session"]["translation"]["language"] == "ja"
+    assert ja["session"]["output_modalities"] == ["text"]

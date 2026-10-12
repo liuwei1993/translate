@@ -1,10 +1,28 @@
-from online_caption.direction import CaptionRouter, speech_language
+from online_caption.direction import CaptionRouter, lanes_for, speech_language
 
 
 def test_speech_language_distinguishes_chinese_and_english():
     assert speech_language("你好") == "zh"
     assert speech_language("It's twenty") == "en"
     assert speech_language("20") is None
+    assert speech_language("東京です") == "zh"
+
+
+def test_speech_language_treats_kana_as_japanese_on_the_japanese_pair():
+    assert speech_language("こんにちは", ("zh", "ja")) == "ja"
+    assert speech_language("東京駅に行きます", ("zh", "ja")) == "ja"
+    assert speech_language("你好", ("zh", "ja")) == "zh"
+    assert speech_language("了解", ("zh", "ja")) == "zh"
+    assert speech_language("It's twenty", ("zh", "ja")) is None
+
+
+def test_lanes_follow_the_selected_pair():
+    assert lanes_for("auto") == ("en", "zh")
+    assert lanes_for("en") == ("en", "zh")
+    assert lanes_for("zh") == ("en", "zh")
+    assert lanes_for("ja-auto") == ("zh", "ja")
+    assert lanes_for("ja") == ("zh", "ja")
+    assert lanes_for("ja2zh") == ("zh", "ja")
 
 
 def test_chinese_speech_uses_the_english_translation():
@@ -73,4 +91,57 @@ def test_chinese_target_ignores_chinese_speech():
     router.feed("en", [{"type": "source", "text": "how are you", "final": False}])
     assert router.feed("zh", [{"type": "translation", "text": "你好吗？", "final": False}]) == [
         {"type": "translation", "text": "你好吗？", "final": False}
+    ]
+
+
+def test_japanese_pair_ignores_source_from_the_japanese_lane():
+    router = CaptionRouter("ja-auto")
+    assert router.feed("ja", [{"type": "source", "text": "こんにちは", "final": False}]) == []
+
+
+def test_chinese_speech_uses_the_japanese_translation():
+    router = CaptionRouter("ja-auto")
+    shown = router.feed("zh", [{"type": "source", "text": "你好", "final": False}])
+    assert shown == [{"type": "source", "text": "你好", "final": False}]
+    assert router.feed("ja", [{"type": "translation", "text": "こんにちは", "final": False}]) == [
+        {"type": "translation", "text": "こんにちは", "final": False}
+    ]
+    assert router.feed("zh", [{"type": "translation", "text": "你好呀", "final": False}]) == []
+
+
+def test_japanese_speech_uses_the_chinese_translation():
+    router = CaptionRouter("ja-auto")
+    router.feed("zh", [{"type": "translation", "text": "你好", "final": False}])
+    shown = router.feed("zh", [{"type": "source", "text": "こんにちは", "final": False}])
+    assert {"type": "source", "text": "こんにちは", "final": False} in shown
+    assert {"type": "translation", "text": "你好", "final": False} in shown
+    assert router.feed("ja", [{"type": "translation", "text": "こんにちは", "final": False}]) == []
+
+
+def test_kanji_only_japanese_is_treated_as_chinese():
+    router = CaptionRouter("ja-auto")
+    router.feed("ja", [{"type": "translation", "text": "了解しました", "final": False}])
+    shown = router.feed("zh", [{"type": "source", "text": "了解", "final": False}])
+    assert {"type": "translation", "text": "了解しました", "final": False} in shown
+
+
+def test_japanese_target_ignores_japanese_speech():
+    router = CaptionRouter("ja")
+    router.feed("zh", [{"type": "source", "text": "こんにちは", "final": False}])
+    assert router.feed("ja", [{"type": "translation", "text": "你好", "final": False}]) == []
+    router.feed("zh", [{"type": "source", "text": "你好", "final": False}])
+    assert router.feed("ja", [{"type": "translation", "text": "こんにちは", "final": False}]) == [
+        {"type": "translation", "text": "こんにちは", "final": False}
+    ]
+
+
+def test_chinese_from_japanese_ignores_chinese_and_kanji_only():
+    router = CaptionRouter("ja2zh")
+    router.feed("zh", [{"type": "source", "text": "你好", "final": False}])
+    assert router.feed("zh", [{"type": "translation", "text": "こんにちは", "final": False}]) == []
+    router.feed("zh", [{"type": "source", "text": "了解", "final": False}])
+    assert router.feed("zh", [{"type": "translation", "text": "わかりました", "final": False}]) == []
+    router.feed("zh", [{"type": "source", "text": "こんにちは", "final": False}])
+    assert router.feed("zh", [{"type": "translation", "text": "你好", "final": False}]) == [
+        {"type": "translation", "text": "你好", "final": False}
     ]

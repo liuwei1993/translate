@@ -15,7 +15,7 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Response
 
-from online_caption.direction import CaptionRouter
+from online_caption.direction import CaptionRouter, lanes_for
 from online_caption.gateway import GatewaySession
 from online_caption.model_map import session_update
 from online_caption.upstream import (
@@ -230,7 +230,9 @@ class BrowserBridge:
                 kind = payload.get("type")
                 if kind == "start":
                     raw_target = payload.get("target") or "auto"
-                    if raw_target not in ("auto", "en", "zh"):
+                    try:
+                        lanes = lanes_for(raw_target)
+                    except ValueError:
                         await send_browser(
                             [{"type": "error", "code": "upstream", "message": "方向不对"}]
                         )
@@ -245,7 +247,7 @@ class BrowserBridge:
                     router.set_mode(raw_target)
                     pending_audio.clear()
                     opened: dict[str, LiveTranslateClient] = {}
-                    for lane in ("en", "zh"):
+                    for lane in lanes:
                         current = await open_client()
                         if current is None:
                             for item in opened.values():

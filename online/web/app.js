@@ -25,11 +25,17 @@ const MODES = {
   auto: "中英文互译",
   en: "中文 → 英文",
   zh: "英文 → 中文",
+  "ja-auto": "中日互译",
+  ja: "中文 → 日文",
+  ja2zh: "日文 → 中文",
 };
 const LEADS = {
   auto: "说中文就出英文，说英文就出中文。",
   en: "只把中文译成英文。",
   zh: "只把英文译成中文。",
+  "ja-auto": "说中文就出日文，说日文就出中文。",
+  ja: "只把中文译成日文。",
+  ja2zh: "只把日文译成中文。",
 };
 const directionToggle = document.querySelector("#direction-toggle");
 const directionMenu = document.querySelector("#direction-menu");

@@ -2,7 +2,7 @@
 
 
 def session_update(target: str) -> dict:
-    if target not in ("en", "zh"):
+    if target not in ("en", "zh", "ja"):
         raise ValueError(f"不支持的目标语言: {target}")
     return {
         "type": "session.update",
