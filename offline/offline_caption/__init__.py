@@ -1,1 +1,1 @@
-"""Offline bilingual caption pipeline."""
+"""已废弃：离线识别和翻译。现行翻译路径是 online/ 的网页同声。"""

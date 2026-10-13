@@ -1,5 +1,7 @@
 # 断网字幕流水线 Implementation Plan
 
+> **已废弃：** 离线识别和翻译已废弃。现行翻译路径是 `online/` 的网页同声。本计划只保留当时的实现步骤。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在当前仓库做出一条断网可运行的中英同声字幕流水线：wav 进去，原文和译文的 JSON 行出来。

@@ -50,7 +50,7 @@ async def replay(url: str, wav_path: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="ws://8.130.163.41:9000/ws")
+    parser.add_argument("--url", default="wss://8.130.163.41:9000/ws")
     parser.add_argument("wav")
     args = parser.parse_args()
     asyncio.run(replay(args.url, args.wav))

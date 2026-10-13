@@ -1,5 +1,6 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from offline_caption.asr import SherpaStreamingAsr
@@ -44,6 +45,7 @@ def captions_for_wav(session: CaptionSession, path: str) -> list[dict]:
 
 
 def main() -> None:
+    print("离线识别和翻译已废弃，现行翻译路径是 online/。", file=sys.stderr)
     parser = argparse.ArgumentParser()
     parser.add_argument("--wav", required=True)
     parser.add_argument("--direction", choices=["zh2en", "en2zh"], default="zh2en")

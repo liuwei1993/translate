@@ -1,3 +1,6 @@
+"""已废弃：离线翻译。现行翻译路径是 online/ 的网页同声。"""
+
+
 class PrefixTranslator:
     def __init__(self, prefix: str):
         self.prefix = prefix

@@ -5,7 +5,7 @@ import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
-const PAGE_URL = 'http://8.130.163.41:9000/';
+const PAGE_URL = 'https://8.130.163.41:9000/';
 
 let startMic: () => void = (): void => {};
 let stopMic: () => void = (): void => {};
@@ -278,7 +278,21 @@ struct Index {
           event.request.grant(event.request.getAccessibleResource());
         })
         .onSslErrorEventReceive((event: OnSslErrorEventReceiveEvent) => {
-          event.handler.handleConfirm();
+          hilog.error(0x0002, 'webcap', 'ssl error %{public}d', event.error);
+          event.handler.handleCancel();
+        })
+        .onSslErrorEvent((event: SslErrorEvent) => {
+          hilog.error(0x0002, 'webcap', 'ssl event %{public}d %{public}s', event.error, event.url);
+          event.handler.handleCancel();
+        })
+        .onErrorReceive((event: OnErrorReceiveEvent) => {
+          if (!event.request.isMainFrame()) {
+            return;
+          }
+          const info = event.error.getErrorInfo();
+          const code = event.error.getErrorCode();
+          hilog.error(0x0002, 'webcap', 'load failed %{public}d %{public}s', code, info);
+          this.status = `页面打不开 ${code} ${info}`;
         })
         .onPageEnd(() => {
           this.installShellHook();

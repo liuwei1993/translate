@@ -290,9 +290,18 @@ async def process_request(connection, request):
     return http_file(200, file_path.read_bytes(), content_type)
 
 
+def build_ssl_context(cert_path: Path, key_path: Path) -> ssl.SSLContext:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.load_cert_chain(cert_path, key_path)
+    return context
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--http", action="store_true", help="用 HTTP 和 ws，不启用证书")
+    parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=None)
     return parser.parse_args(argv)
 
@@ -306,15 +315,14 @@ async def main(argv: list[str] | None = None) -> None:
     port = args.port if args.port is not None else 9000
     if not args.http:
         cert_path, key_path = ensure_certificate(CERT_DIR)
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ssl_context.load_cert_chain(cert_path, key_path)
+        ssl_context = build_ssl_context(cert_path, key_path)
         scheme = "https"
         if args.port is None:
             port = 8443
     bridge = BrowserBridge(settings)
     async with serve(
         bridge,
-        "0.0.0.0",
+        args.host,
         port,
         process_request=process_request,
         ssl=ssl_context,

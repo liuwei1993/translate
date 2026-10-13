@@ -1,3 +1,5 @@
+"""已废弃：离线识别。现行翻译路径是 online/ 的网页同声。"""
+
 from dataclasses import dataclass
 
 
