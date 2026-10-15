@@ -1,7 +1,8 @@
-import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
+import { abilityAccessCtrl, common, Permissions, wantAgent } from '@kit.AbilityKit';
 import { audio } from '@kit.AudioKit';
 import { webview } from '@kit.ArkWeb';
 import { util } from '@kit.ArkTS';
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
@@ -32,6 +33,8 @@ struct Index {
   private pcmParts: ArrayBuffer[] = [];
   private pcmBytes: number = 0;
   private flushScheduled: boolean = false;
+  private listenGeneration: number = 0;
+  private backgroundOn: boolean = false;
   @State status: string = '';
   @State micAllowed: boolean = true;
 
@@ -186,14 +189,56 @@ struct Index {
     }
   }
 
+  private async startBackgroundTask(): Promise<void> {
+    if (this.backgroundOn) {
+      return;
+    }
+    const context = this.context();
+    const info: wantAgent.WantAgentInfo = {
+      wants: [{
+        bundleName: context.abilityInfo.bundleName,
+        abilityName: context.abilityInfo.name
+      }],
+      actionType: wantAgent.OperationType.START_ABILITY,
+      requestCode: 0,
+      actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+    };
+    try {
+      const agent = await wantAgent.getWantAgent(info);
+      await backgroundTaskManager.startBackgroundRunning(context,
+        backgroundTaskManager.BackgroundMode.AUDIO_RECORDING, agent);
+      this.backgroundOn = true;
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(0x0002, 'webcap', 'background task failed: %{public}d', error.code);
+      this.status = `后台录音未获准 ${error.code}`;
+    }
+  }
+
+  private async stopBackgroundTask(): Promise<void> {
+    if (!this.backgroundOn) {
+      return;
+    }
+    this.backgroundOn = false;
+    try {
+      await backgroundTaskManager.stopBackgroundRunning(this.context());
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(0x0002, 'webcap', 'stop background failed: %{public}d', error.code);
+    }
+  }
+
   private async startCapture(): Promise<void> {
     if (this.capturer || this.starting) {
       return;
     }
     this.starting = true;
+    const generation = ++this.listenGeneration;
     const allowed = await this.ensureMicPermission();
-    if (!allowed) {
-      this.denyMic();
+    if (!allowed || generation !== this.listenGeneration) {
+      if (!allowed) {
+        this.denyMic();
+      }
       this.starting = false;
       return;
     }
@@ -218,22 +263,41 @@ struct Index {
           this.queuePcm(copy);
         }, 0);
       });
-      await this.capturer.start();
-      this.status = '';
+      const capturer = this.capturer;
+      await capturer.start();
+      if (generation !== this.listenGeneration) {
+        if (this.capturer === capturer) {
+          this.capturer = undefined;
+          await capturer.stop();
+          await capturer.release();
+        }
+        return;
+      }
+      await this.startBackgroundTask();
+      if (generation !== this.listenGeneration) {
+        await this.stopBackgroundTask();
+        return;
+      }
+      if (this.backgroundOn) {
+        this.status = '';
+      }
     } catch (err) {
       const error = err as BusinessError;
       this.status = `打开麦克风失败 ${error.code}`;
       this.capturer = undefined;
       this.denyMic();
+    } finally {
+      this.starting = false;
     }
-    this.starting = false;
   }
 
   private async stopCapture(): Promise<void> {
+    this.listenGeneration++;
     this.pcmParts = [];
     this.pcmBytes = 0;
     const current = this.capturer;
     this.capturer = undefined;
+    await this.stopBackgroundTask();
     if (!current) {
       return;
     }

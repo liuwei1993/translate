@@ -19,6 +19,10 @@
     {
       "name": "net_reason",
       "value": "把录音送到电脑上的翻译服务"
+    },
+    {
+      "name": "background_reason",
+      "value": "切到其他应用时继续听写"
     }
   ]
 }
