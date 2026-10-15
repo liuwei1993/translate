@@ -18,6 +18,7 @@ from websockets.http11 import Response
 from online_caption.direction import CaptionRouter, lanes_for
 from online_caption.gateway import GatewaySession
 from online_caption.model_map import session_update
+from online_caption.tts import download_bytes, post_json, speak
 from online_caption.upstream import (
     AuthError,
     LiveTranslateClient,
@@ -103,8 +104,8 @@ def http_file(status: int, body: bytes, content_type: str) -> Response:
             ("Cache-Control", "no-store"),
         ]
     )
-    reason = "OK" if status == 200 else "Not Found"
-    return Response(status, reason, headers, body)
+    reasons = {200: "OK", 400: "Bad Request", 404: "Not Found", 502: "Bad Gateway"}
+    return Response(status, reasons.get(status, "Error"), headers, body)
 
 
 class BrowserBridge:
@@ -280,14 +281,23 @@ class BrowserBridge:
                 await close_client(item, finish_event)
 
 
-async def process_request(connection, request):
-    if request.path.split("?", 1)[0] == "/ws":
-        return None
-    file_path = resolve_web_file(WEB_ROOT, request.path)
-    if file_path is None:
-        return http_file(404, "找不到页面".encode(), "text/plain; charset=utf-8")
-    content_type = CONTENT_TYPES.get(file_path.suffix, "application/octet-stream")
-    return http_file(200, file_path.read_bytes(), content_type)
+def build_process_request(settings, web_root: Path = WEB_ROOT):
+    async def process_request(connection, request):
+        path = request.path.split("?", 1)[0]
+        if path == "/ws":
+            return None
+        if path == "/tts":
+            result = await asyncio.to_thread(
+                speak, settings, request.path, post_json, download_bytes
+            )
+            return http_file(result.status, result.body, result.content_type)
+        file_path = resolve_web_file(web_root, request.path)
+        if file_path is None:
+            return http_file(404, "找不到页面".encode(), "text/plain; charset=utf-8")
+        content_type = CONTENT_TYPES.get(file_path.suffix, "application/octet-stream")
+        return http_file(200, file_path.read_bytes(), content_type)
+
+    return process_request
 
 
 def build_ssl_context(cert_path: Path, key_path: Path) -> ssl.SSLContext:
@@ -324,7 +334,7 @@ async def main(argv: list[str] | None = None) -> None:
         bridge,
         args.host,
         port,
-        process_request=process_request,
+        process_request=build_process_request(settings),
         ssl=ssl_context,
         max_size=2**20,
     ):

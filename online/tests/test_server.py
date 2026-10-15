@@ -1,8 +1,10 @@
+import asyncio
 import ssl
 import subprocess
 from pathlib import Path
 
-from online_caption.server import build_ssl_context, parse_args, resolve_web_file
+from online_caption.server import build_process_request, build_ssl_context, parse_args, resolve_web_file
+from online_caption.upstream import Settings
 
 
 def test_resolve_web_file_serves_index_and_blocks_escape(tmp_path):
@@ -15,6 +17,20 @@ def test_resolve_web_file_serves_index_and_blocks_escape(tmp_path):
     assert resolve_web_file(web, "/app.js").read_text(encoding="utf-8") == "js"
     assert resolve_web_file(web, "/../.env") is None
     assert resolve_web_file(web, "/missing.js") is None
+
+
+def test_tts_route_rejects_empty_text_without_calling_upstream():
+    handler = build_process_request(
+        Settings(api_key="sk-secret-value", host="llm.example", model="realtime")
+    )
+
+    class Request:
+        path = "/tts?text="
+
+    response = asyncio.run(handler(None, Request()))
+    assert response.status_code == 400
+    assert response.body == "没有文字".encode()
+    assert b"sk-secret-value" not in response.body
 
 
 def test_http_mode_uses_port_9000_by_default():

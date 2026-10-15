@@ -5,12 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#14160f">
   <title>译口同声 UniVoice</title>
-  <link rel="stylesheet" href="/style.css?v=4">
+  <link rel="stylesheet" href="/style.css?v=6">
 </head>
 <body>
   <header>
     <p class="brand">译口同声 UniVoice</p>
-    <p id="status" class="status">准备</p>
+    <div class="header-side">
+      <p id="status" class="status">准备</p>
+      <button type="button" id="history-open" class="header-btn">历史</button>
+    </div>
   </header>
 
   <div class="direction">
@@ -33,6 +36,7 @@
     <p id="lead" class="lead">说中文就出英文，说英文就出中文。</p>
     <p id="ready-error" class="notice" hidden></p>
     <button type="button" id="start" class="primary">开始</button>
+    <button type="button" id="new-session-ready" class="ghost new-session">新建会话</button>
   </section>
 
   <section id="panel-listening" class="panel" hidden>
@@ -42,6 +46,7 @@
     </article>
     <ol id="history"></ol>
     <button type="button" id="stop" class="ghost">停止</button>
+    <button type="button" id="new-session-listening" class="ghost new-session">新建会话</button>
   </section>
 
   <section id="panel-mic" class="panel" hidden>
@@ -55,8 +60,22 @@
     <p class="lead">已经冻结的句子还在。重连后从新的一句开始。</p>
     <ol id="down-history"></ol>
     <button type="button" id="reconnect" class="primary">重新连接</button>
+    <button type="button" id="new-session-down" class="ghost new-session">新建会话</button>
   </section>
 
-  <script src="/app.js?v=6" type="module"></script>
+  <section id="panel-history" class="panel" hidden>
+    <button type="button" id="history-back" class="header-btn back">返回</button>
+    <div id="session-list-wrap">
+      <h1>历史</h1>
+      <p id="history-empty" class="lead" hidden>还没有会话</p>
+      <ol id="session-list"></ol>
+    </div>
+    <div id="session-detail" hidden>
+      <p id="session-meta" class="session-meta"></p>
+      <ol id="session-lines"></ol>
+    </div>
+  </section>
+
+  <script src="/app.js?v=8" type="module"></script>
 </body>
 </html>

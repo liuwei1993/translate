@@ -28,8 +28,16 @@ body {
 header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 0.75rem;
   margin-bottom: 1.25rem;
+}
+
+.header-side {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-shrink: 0;
 }
 
 .brand, .status, h1, p, button { margin: 0; }
@@ -125,6 +133,58 @@ button {
   margin-top: 0.4rem;
 }
 
+button.header-btn {
+  width: auto;
+  min-height: 2rem;
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  color: var(--gold);
+  border-color: rgba(228, 177, 90, 0.55);
+  background: transparent;
+}
+
+.back { align-self: flex-start; }
+
+#session-list-wrap[hidden],
+#session-detail[hidden] { display: none; }
+
+.session-meta {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+button.session-row {
+  width: 100%;
+  min-height: 0;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.session-when {
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.session-direction {
+  color: var(--gold);
+  font-size: 0.82rem;
+}
+
+.session-preview {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .ghost { background: transparent; color: var(--muted); }
 
 .notice {
@@ -169,3 +229,35 @@ li {
 li strong { display: block; color: #d9d4c8; font-weight: 600; }
 li.failed strong, li.partial strong { color: var(--danger); font-weight: 500; }
 li span.tag { display: block; font-size: 0.78rem; margin-bottom: 0.15rem; }
+li .line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+li .line strong,
+li .line span {
+  flex: 1;
+  min-width: 0;
+}
+button.speak {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-height: 0;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+}
+button.speak.playing {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+button.speak.busy { opacity: 0.45; }
+button.speak.error {
+  color: var(--danger);
+  border-color: var(--danger);
+}

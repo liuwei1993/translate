@@ -8,6 +8,7 @@
   }
   window.__capShell = true;
   var socket = null;
+  var connecting = null;
   var opening = false;
   var stopping = false;
   var live = { source: '', translation: '' };
@@ -30,6 +31,10 @@
     if (status) {
       status.textContent = labels[name] || '';
     }
+    var historyPanel = document.getElementById('panel-history');
+    if (historyPanel) {
+      historyPanel.hidden = true;
+    }
   }
 
   function render() {
@@ -50,18 +55,9 @@
       history.forEach(function (item) {
         var row = document.createElement('li');
         row.className = item.kind;
-        if (item.kind === 'failed' || item.kind === 'partial') {
-          var tag = document.createElement('span');
-          tag.className = 'tag';
-          tag.textContent = item.kind === 'failed' ? '这句失败' : '未完成';
-          row.appendChild(tag);
+        if (typeof window.renderHistoryRow === 'function') {
+          window.renderHistoryRow(row, item);
         }
-        var strong = document.createElement('strong');
-        strong.textContent = item.source || '…';
-        var span = document.createElement('span');
-        span.textContent = item.translation || '';
-        row.appendChild(strong);
-        row.appendChild(span);
         list.appendChild(row);
       });
     });
@@ -103,17 +99,33 @@
     return { type: 'start', target: mode };
   }
 
+  function closeActiveSocket() {
+    var current = socket || connecting;
+    socket = null;
+    connecting = null;
+    if (!current) {
+      return;
+    }
+    if (current.readyState === 1) {
+      try {
+        current.send(JSON.stringify({ type: 'stop' }));
+      } catch (error) {
+      }
+    }
+    try {
+      current.close();
+    } catch (error) {
+    }
+  }
+
   function stopAll() {
     stopping = true;
+    opening = false;
     try {
       bridge.stop();
     } catch (error) {
     }
-    if (socket && socket.readyState === 1) {
-      socket.send(JSON.stringify({ type: 'stop' }));
-      socket.close();
-    }
-    socket = null;
+    closeActiveSocket();
     live = { source: '', translation: '' };
     render();
     show('ready');
@@ -193,8 +205,17 @@
     var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var ws = new WebSocket(protocol + '//' + location.host + '/ws');
     ws.binaryType = 'arraybuffer';
+    connecting = ws;
     ws.addEventListener('open', function () {
       opening = false;
+      if (stopping || connecting !== ws) {
+        try {
+          ws.close();
+        } catch (error) {
+        }
+        return;
+      }
+      connecting = null;
       socket = ws;
       attach(ws);
       ws.send(JSON.stringify(startMessage()));
@@ -203,6 +224,12 @@
     }, { once: true });
     ws.addEventListener('error', function () {
       opening = false;
+      if (connecting === ws) {
+        connecting = null;
+      }
+      if (stopping) {
+        return;
+      }
       var notice = document.getElementById('ready-error');
       if (notice) {
         notice.hidden = false;
@@ -210,6 +237,70 @@
       }
       show('ready');
     }, { once: true });
+  }
+
+  function collectLines() {
+    var lines = [];
+    for (var i = history.length - 1; i >= 0; i--) {
+      var item = history[i];
+      if (!(item.source || item.translation)) {
+        continue;
+      }
+      lines.push({
+        source: item.source || '',
+        translation: item.translation || '',
+        kind: item.kind || 'ok'
+      });
+    }
+    if (live.source || live.translation) {
+      lines.push({
+        source: live.source || '',
+        translation: live.translation || '',
+        kind: 'partial'
+      });
+    }
+    return lines;
+  }
+
+  function newSession() {
+    var active = opening || connecting || (socket && (socket.readyState === 0 || socket.readyState === 1));
+    if (active) {
+      stopping = true;
+      opening = false;
+      try {
+        bridge.stop();
+      } catch (error) {
+      }
+      closeActiveSocket();
+    }
+    var lines = collectLines();
+    var label = document.getElementById('direction-label');
+    var direction = label ? label.textContent : '';
+    var failed = false;
+    try {
+      if (typeof window.univoiceSaveSession !== 'function') {
+        throw new Error('missing save');
+      }
+      window.univoiceSaveSession(lines, direction);
+    } catch (error) {
+      failed = lines.length > 0;
+    }
+    var notice = document.getElementById('ready-error');
+    if (failed) {
+      if (notice) {
+        notice.hidden = false;
+        notice.textContent = '这次没能保存到本机';
+      }
+      show('ready');
+      return;
+    }
+    if (notice) {
+      notice.hidden = true;
+    }
+    history = [];
+    live = { source: '', translation: '' };
+    render();
+    show('ready');
   }
 
   function rebind(id, handler) {
@@ -226,6 +317,9 @@
   rebind('retry-mic', begin);
   rebind('reconnect', begin);
   rebind('stop', stopAll);
+  rebind('new-session-ready', newSession);
+  rebind('new-session-listening', newSession);
+  rebind('new-session-down', newSession);
   var menu = document.getElementById('direction-menu');
   if (menu) {
     menu.addEventListener('click', function () {

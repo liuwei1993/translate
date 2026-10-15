@@ -4,12 +4,24 @@ const panels = {
   listening: document.querySelector("#panel-listening"),
   mic: document.querySelector("#panel-mic"),
   down: document.querySelector("#panel-down"),
+  history: document.querySelector("#panel-history"),
 };
 const readyError = document.querySelector("#ready-error");
 const liveSource = document.querySelector("#live-source");
 const liveTranslation = document.querySelector("#live-translation");
 const historyList = document.querySelector("#history");
 const downHistory = document.querySelector("#down-history");
+const sessionListWrap = document.querySelector("#session-list-wrap");
+const sessionList = document.querySelector("#session-list");
+const sessionDetail = document.querySelector("#session-detail");
+const sessionMeta = document.querySelector("#session-meta");
+const sessionLines = document.querySelector("#session-lines");
+const historyEmpty = document.querySelector("#history-empty");
+
+const STORAGE_KEY = "univoice.sessions";
+const SESSION_LIMIT = 40;
+let historyReturn = "ready";
+let openSessionId = null;
 
 let socket = null;
 let mode = "auto";
@@ -137,31 +149,179 @@ function show(name) {
     listening: "正在听",
     mic: "麦克风不可用",
     down: "连接中断",
+    history: "历史",
   };
   status.textContent = labels[name];
 }
+
+const SPEAKER_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm11.5 3a3.5 3.5 0 0 0-1.8-3.06v6.12A3.5 3.5 0 0 0 15.5 12zM14 4.23v2.06a6 6 0 0 1 0 11.42v2.06a8 8 0 0 0 0-15.54z"/></svg>`;
+
+let playContext = null;
+let activeSource = null;
+let playToken = 0;
+let activeText = "";
+let activeState = "";
+const wavCache = new Map();
+
+function playContextOrNew() {
+  if (!playContext) {
+    playContext = new AudioContext();
+  }
+  return playContext;
+}
+
+function stopSpeaking() {
+  if (activeSource) {
+    activeSource.onended = null;
+    try {
+      activeSource.stop();
+    } catch {
+      // already stopped
+    }
+    activeSource = null;
+  }
+  activeText = "";
+  activeState = "";
+}
+
+function paintSpeakButtons() {
+  document.querySelectorAll("button.speak").forEach((button) => {
+    const text = button.dataset.speak || "";
+    button.classList.remove("error");
+    button.classList.toggle("playing", activeState === "playing" && text === activeText);
+    button.classList.toggle("busy", activeState === "busy" && text === activeText);
+  });
+}
+
+function speakButton(text, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "speak";
+  button.dataset.speak = text;
+  button.setAttribute("aria-label", label);
+  button.innerHTML = SPEAKER_SVG;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSpeak(text);
+  });
+  return button;
+}
+
+async function toggleSpeak(text) {
+  const context = playContextOrNew();
+  const resume = context.resume();
+  if (activeText === text && (activeState === "playing" || activeState === "busy")) {
+    playToken += 1;
+    stopSpeaking();
+    paintSpeakButtons();
+    return;
+  }
+  const token = playToken + 1;
+  playToken = token;
+  stopSpeaking();
+  activeText = text;
+  activeState = "busy";
+  paintSpeakButtons();
+  try {
+    await resume;
+    let buffer = wavCache.get(text);
+    if (!buffer) {
+      const response = await fetch(`/tts?text=${encodeURIComponent(text)}`);
+      if (!response.ok) {
+        throw new Error("tts");
+      }
+      const bytes = await response.arrayBuffer();
+      buffer = await context.decodeAudioData(bytes.slice(0));
+      if (wavCache.size >= 20) {
+        const oldest = wavCache.keys().next().value;
+        wavCache.delete(oldest);
+      }
+      wavCache.set(text, buffer);
+    }
+    if (token !== playToken) {
+      return;
+    }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.onended = () => {
+      if (activeSource !== source) {
+        return;
+      }
+      activeSource = null;
+      activeText = "";
+      activeState = "";
+      paintSpeakButtons();
+    };
+    activeSource = source;
+    activeState = "playing";
+    source.start();
+    paintSpeakButtons();
+  } catch {
+    if (token !== playToken) {
+      return;
+    }
+    stopSpeaking();
+    paintSpeakButtons();
+    document.querySelectorAll("button.speak").forEach((button) => {
+      if (button.dataset.speak === text) {
+        button.classList.add("error");
+      }
+    });
+  }
+}
+
+function appendSpoken(row, text, label, sourceLine) {
+  const line = document.createElement("p");
+  line.className = "line";
+  const words = document.createElement(sourceLine ? "strong" : "span");
+  words.textContent = text || (sourceLine ? "…" : "");
+  line.append(words);
+  const spoken = text.trim();
+  if (spoken) {
+    const button = speakButton(spoken, label);
+    if (activeState === "playing" && spoken === activeText) {
+      button.classList.add("playing");
+    }
+    if (activeState === "busy" && spoken === activeText) {
+      button.classList.add("busy");
+    }
+    line.append(button);
+  }
+  row.append(line);
+}
+
+function renderHistoryRow(row, item) {
+  if (item.kind === "failed") {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "这句失败";
+    row.append(tag);
+  } else if (item.kind === "partial") {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "未完成";
+    row.append(tag);
+  }
+  appendSpoken(row, item.source || "", "播放原文", true);
+  if (item.translation) {
+    appendSpoken(row, item.translation, "播放译文", false);
+  } else if (item.note) {
+    const note = document.createElement("span");
+    note.textContent = item.note;
+    row.append(note);
+  }
+}
+
+window.renderHistoryRow = renderHistoryRow;
 
 function renderHistory(list, items) {
   list.replaceChildren();
   for (const item of items) {
     const row = document.createElement("li");
     row.className = item.kind;
-    if (item.kind === "failed") {
-      const tag = document.createElement("span");
-      tag.className = "tag";
-      tag.textContent = "这句失败";
-      row.append(tag);
-    } else if (item.kind === "partial") {
-      const tag = document.createElement("span");
-      tag.className = "tag";
-      tag.textContent = "未完成";
-      row.append(tag);
-    }
-    const source = document.createElement("strong");
-    source.textContent = item.source || "…";
-    const translation = document.createElement("span");
-    translation.textContent = item.translation || item.note || "";
-    row.append(source, translation);
+    renderHistoryRow(row, item);
     list.append(row);
   }
   list.scrollTop = 0;
@@ -172,6 +332,212 @@ function render() {
   liveTranslation.textContent = live.translation;
   renderHistory(historyList, history);
   renderHistory(downHistory, history);
+}
+
+function lineText(line) {
+  if (!line || typeof line !== "object") {
+    return false;
+  }
+  return Boolean((line.source || "").trim() || (line.translation || "").trim() || (line.note || "").trim());
+}
+
+function normalizeLine(line) {
+  const kind = line.kind === "failed" || line.kind === "partial" ? line.kind : "ok";
+  const normalized = {
+    source: line.source || "",
+    translation: line.translation || "",
+    kind,
+  };
+  if (line.note) {
+    normalized.note = line.note;
+  }
+  return normalized;
+}
+
+function collectLines(items, current) {
+  const lines = [];
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (lineText(item)) {
+      lines.push(normalizeLine(item));
+    }
+  }
+  if (current && lineText(current)) {
+    lines.push(normalizeLine({ ...current, kind: "partial" }));
+  }
+  return lines;
+}
+
+function loadSessions() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter((item) => item && typeof item === "object" && Array.isArray(item.lines))
+      .slice(0, SESSION_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function formatWhen(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function saveSessionLines(lines, direction) {
+  const clean = (Array.isArray(lines) ? lines : []).filter(lineText).map(normalizeLine);
+  if (!clean.length) {
+    return "empty";
+  }
+  const sessions = loadSessions();
+  sessions.unshift({
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    time: new Date().toISOString(),
+    direction: (direction || MODES[mode] || "").trim(),
+    lines: clean,
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, SESSION_LIMIT)));
+  return "saved";
+}
+
+globalThis.univoiceSaveSession = saveSessionLines;
+
+function visiblePanel() {
+  for (const name of ["ready", "listening", "mic", "down"]) {
+    if (panels[name] && !panels[name].hidden) {
+      return name;
+    }
+  }
+  return historyReturn || "ready";
+}
+
+function renderSessionList() {
+  const sessions = loadSessions();
+  sessionList.replaceChildren();
+  historyEmpty.hidden = sessions.length > 0;
+  for (const session of sessions) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "session-row";
+    const when = document.createElement("span");
+    when.className = "session-when";
+    when.textContent = formatWhen(session.time);
+    const direction = document.createElement("span");
+    direction.className = "session-direction";
+    direction.textContent = session.direction || "";
+    const preview = document.createElement("span");
+    preview.className = "session-preview";
+    const first = (session.lines || []).find(lineText);
+    preview.textContent = first ? first.source || first.translation || first.note || "" : "";
+    button.append(when, direction, preview);
+    button.addEventListener("click", () => openSession(session.id));
+    item.append(button);
+    sessionList.append(item);
+  }
+}
+
+function openSession(id) {
+  const session = loadSessions().find((item) => item.id === id);
+  if (!session) {
+    openSessionId = null;
+    sessionDetail.hidden = true;
+    sessionListWrap.hidden = false;
+    renderSessionList();
+    return;
+  }
+  openSessionId = id;
+  const when = formatWhen(session.time);
+  const direction = session.direction || "";
+  sessionMeta.textContent = direction ? `${when} · ${direction}` : when;
+  renderHistory(sessionLines, session.lines || []);
+  sessionListWrap.hidden = true;
+  sessionDetail.hidden = false;
+}
+
+function openHistory() {
+  if (panels.history.hidden) {
+    historyReturn = visiblePanel();
+  }
+  openSessionId = null;
+  sessionDetail.hidden = true;
+  sessionListWrap.hidden = false;
+  directionMenu.hidden = true;
+  directionToggle.setAttribute("aria-expanded", "false");
+  renderSessionList();
+  show("history");
+}
+
+function closeHistory() {
+  if (openSessionId) {
+    openSessionId = null;
+    sessionDetail.hidden = true;
+    sessionListWrap.hidden = false;
+    renderSessionList();
+    return;
+  }
+  show(historyReturn || "ready");
+}
+
+async function stopTransport() {
+  stopping = true;
+  stopShell();
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "stop" }));
+  }
+  if (socket) {
+    socket.close();
+    socket = null;
+  }
+  await releaseAudio();
+}
+
+let savingSession = false;
+
+async function newSession() {
+  if (savingSession) {
+    return;
+  }
+  savingSession = true;
+  try {
+    const active = Boolean(socket || mediaStream || audioContext || workletNode);
+    if (active) {
+      await stopTransport();
+    }
+    const lines = collectLines(history, live);
+    let result = "empty";
+    try {
+      result = saveSessionLines(lines);
+    } catch {
+      result = "error";
+    }
+    if (result === "error") {
+      readyError.hidden = false;
+      readyError.textContent = "这次没能保存到本机";
+      show("ready");
+      return;
+    }
+    readyError.hidden = true;
+    history = [];
+    live = blank();
+    render();
+    show("ready");
+  } finally {
+    savingSession = false;
+  }
 }
 
 function pushHistory(kind, note) {
@@ -381,6 +747,11 @@ document.querySelector("#start").addEventListener("click", start);
 document.querySelector("#retry-mic").addEventListener("click", start);
 document.querySelector("#reconnect").addEventListener("click", start);
 document.querySelector("#stop").addEventListener("click", userStop);
+document.querySelectorAll(".new-session").forEach((button) => {
+  button.addEventListener("click", newSession);
+});
+document.querySelector("#history-open").addEventListener("click", openHistory);
+document.querySelector("#history-back").addEventListener("click", closeHistory);
 
 document.addEventListener("visibilitychange", () => {
   if (shellBridge()) {
