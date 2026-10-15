@@ -154,7 +154,7 @@ function show(name) {
   status.textContent = labels[name];
 }
 
-const SPEAKER_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm11.5 3a3.5 3.5 0 0 0-1.8-3.06v6.12A3.5 3.5 0 0 0 15.5 12zM14 4.23v2.06a6 6 0 0 1 0 11.42v2.06a8 8 0 0 0 0-15.54z"/></svg>`;
+const SPEAKER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 10v4h3.2L12 18.2V5.8L7.7 10H4.5z"/><path d="M15.6 9.2a3.4 3.4 0 0 1 0 5.6"/></svg>`;
 
 let playContext = null;
 let activeSource = null;
