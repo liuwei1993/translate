@@ -184,6 +184,14 @@ function stopSpeaking() {
   activeState = "";
 }
 
+function haltSpeaking() {
+  playToken += 1;
+  stopSpeaking();
+  paintSpeakButtons();
+}
+
+window.stopSpeaking = haltSpeaking;
+
 function paintSpeakButtons() {
   document.querySelectorAll("button.speak").forEach((button) => {
     const text = button.dataset.speak || "";
@@ -511,6 +519,7 @@ async function newSession() {
   if (savingSession) {
     return;
   }
+  haltSpeaking();
   savingSession = true;
   try {
     const active = Boolean(socket || mediaStream || audioContext || workletNode);
@@ -586,6 +595,7 @@ async function releaseAudio() {
 }
 
 async function userStop() {
+  haltSpeaking();
   stopping = true;
   stopShell();
   if (socket && socket.readyState === WebSocket.OPEN) {
@@ -649,6 +659,9 @@ function openSocket() {
 
 function attachSocket(ws) {
   ws.addEventListener("message", (event) => {
+    if (stopping || socket !== ws) {
+      return;
+    }
     const payload = JSON.parse(event.data);
     if (payload.type === "source" || payload.type === "translation") {
       onCaption(payload);

@@ -63,15 +63,25 @@
     });
   }
 
-  function push(kind) {
+  function push(kind, note) {
     if (!live.source && !live.translation && kind === 'ok') {
       live = { source: '', translation: '' };
       render();
       return;
     }
-    history.unshift({ source: live.source, translation: live.translation, kind: kind });
+    var item = { source: live.source, translation: live.translation, kind: kind };
+    if (note) {
+      item.note = note;
+    }
+    history.unshift(item);
     live = { source: '', translation: '' };
     render();
+  }
+
+  function stopPlayback() {
+    if (typeof window.stopSpeaking === 'function') {
+      window.stopSpeaking();
+    }
   }
 
   window.onHarmonyPcm = function (b64) {
@@ -119,6 +129,7 @@
   }
 
   function stopAll() {
+    stopPlayback();
     stopping = true;
     opening = false;
     try {
@@ -133,6 +144,9 @@
 
   function attach(ws) {
     ws.addEventListener('message', function (event) {
+      if (stopping || socket !== ws) {
+        return;
+      }
       var payload;
       try {
         payload = JSON.parse(event.data);
@@ -174,7 +188,7 @@
         show('down');
         return;
       }
-      push('failed');
+      push('failed', payload.message || '');
     });
     ws.addEventListener('close', function () {
       if (stopping) {
@@ -263,6 +277,7 @@
   }
 
   function newSession() {
+    stopPlayback();
     var active = opening || connecting || (socket && (socket.readyState === 0 || socket.readyState === 1));
     if (active) {
       stopping = true;

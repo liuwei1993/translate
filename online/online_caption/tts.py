@@ -1,10 +1,11 @@
 """把一行字幕交给 qwen3-tts-flash，取回 wav。密钥只出现在请求头里。"""
 
+import http.client
 import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from online_caption.direction import speech_language
 
@@ -14,6 +15,7 @@ MAX_CHARS = 600
 MAX_WAV_BYTES = 2_000_000
 # 业务空间域名不提供这条合成接口，Qwen-TTS 走北京 DashScope。
 DASHSCOPE_HOST = "dashscope.aliyuncs.com"
+AUDIO_HOST_SUFFIX = ".aliyuncs.com"
 LANGUAGE_TYPE = {"zh": "Chinese", "en": "English", "ja": "Japanese"}
 
 
@@ -72,15 +74,38 @@ def _blocked_audio_host(host: str) -> bool:
     return all(piece.isdigit() and 0 <= int(piece) <= 255 for piece in pieces)
 
 
+def checked_audio_url(url: str) -> str:
+    parts = urlsplit(url.strip())
+    if parts.scheme == "http":
+        parts = parts._replace(scheme="https")
+    host = (parts.hostname or "").lower().rstrip(".")
+    if (
+        parts.scheme != "https"
+        or not host.endswith(AUDIO_HOST_SUFFIX)
+        or _blocked_audio_host(host)
+    ):
+        raise TtsUpstream()
+    return urlunsplit(parts)
+
+
 def audio_url(payload: dict) -> str:
     output = payload.get("output") or {}
     audio = output.get("audio") or {}
-    url = audio.get("url") or ""
-    parts = urlsplit(url)
-    host = (parts.hostname or "").lower().rstrip(".")
-    if parts.scheme != "https" or _blocked_audio_host(host):
+    return checked_audio_url(audio.get("url") or "")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise TtsUpstream()
-    return url
+
+
+class _AudioRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return urllib.request.Request(checked_audio_url(newurl), method="GET")
+
+
+_POST_OPENER = urllib.request.build_opener(_NoRedirect)
+_GET_OPENER = urllib.request.build_opener(_AudioRedirect)
 
 
 def synthesize(settings, text: str, post, download) -> bytes:
@@ -107,23 +132,29 @@ def synthesize(settings, text: str, post, download) -> bytes:
     return wav
 
 
-def _read(request: urllib.request.Request) -> tuple[int, bytes]:
+def _open(opener, request: urllib.request.Request) -> tuple[int, bytes]:
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.status, response.read()
+        with opener.open(request, timeout=30) as response:
+            status = response.status
+            body = response.read(MAX_WAV_BYTES + 1)
+    except TtsUpstream:
+        raise
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read()
-    except urllib.error.URLError:
+        return exc.code, exc.read(4096)
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
         raise TtsUpstream() from None
+    if len(body) > MAX_WAV_BYTES:
+        raise TtsUpstream()
+    return status, body
 
 
 def post_json(url: str, headers: dict, body: bytes) -> tuple[int, bytes]:
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    return _read(request)
+    return _open(_POST_OPENER, request)
 
 
 def download_bytes(url: str) -> tuple[int, bytes]:
-    return _read(urllib.request.Request(url, method="GET"))
+    return _open(_GET_OPENER, urllib.request.Request(url, method="GET"))
 
 
 def speak(settings, raw_path: str, post, download) -> SpeakResult:
